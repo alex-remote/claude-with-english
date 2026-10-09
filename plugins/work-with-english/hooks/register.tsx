@@ -2,8 +2,16 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import { DEFAULT_VIEW } from './core/settings/schema'
+import { localDate } from './core/time'
+import { createBand } from './features/band/controller'
+import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
+import { bandView, isShown } from './features/band/view'
+import { createSpeaker } from './features/speak/controller'
+import type { Speaker } from './features/speak/controller'
 import type { Host } from './host'
+import { refresh } from './services/settings'
+import { backupOrRestore } from './services/storeBackup'
 
 // The one place that hooks events and calls `$`; the features under hooks/
 // reach the engine through the Host bound here (docs/dev-plan.md, 架构).
@@ -19,8 +27,19 @@ const envAtom = atom({ plugin: 'work-with-english', key: 'env' } as const, {
 const bandAtom = atom({ plugin: 'work-with-english', key: 'band' } as const, EMPTY_BAND)
 const speakingAtom = atom({ plugin: 'work-with-english', key: 'speaking' } as const, null)
 
+/** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
+const SETTINGS_SYNC_MS = 5000
+
 export const register: Register = on => {
   let host: Host | null = null
+  let band: Band | null = null
+  let speaker: Speaker | null = null
+
+  /** The settings into $.state and the band's mirror, as $.store holds them now */
+  async function loadSettings(bound: Host) {
+    const settings = await refresh(bound)
+    band?.setDelay(settings.delayMs)
+  }
 
   on('session.start', async ($, e, next) => {
     const bound: Host = {
@@ -80,6 +99,7 @@ export const register: Register = on => {
         play: (clip, options) => $.audio.play(clip, options),
       },
       session: {
+        id: () => $.session.id(),
         surfaces: () => $.session.surfaces(),
         version: () => $.session.version(),
       },
@@ -92,6 +112,23 @@ export const register: Register = on => {
       },
     }
     host = bound
+    band = createBand(bound)
+    speaker = createSpeaker(bound)
+    await loadSettings(bound).catch(error => bound.ui.debug(`settings: ${String(error)}`))
+
+    // After the first prompt can go: the store's backup first, before anything writes to it
+    bound.clock.after(0, () => {
+      void (async () => {
+        const ms = await bound.clock.now()
+        const outcome = await backupOrRestore(bound, localDate(ms, -new Date(ms).getTimezoneOffset()))
+        if (outcome === 'restored') {
+          await loadSettings(bound)
+        }
+      })().catch(error => bound.ui.debug(`store backup: ${String(error)}`))
+    })
+    bound.clock.every(SETTINGS_SYNC_MS, () => {
+      void loadSettings(bound).catch(error => bound.ui.debug(`settings sync: ${String(error)}`))
+    })
 
     // Last, in its own try: a failed register must not stop the session's start
     try {
@@ -107,6 +144,46 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // /clear, /resume and /branch reset $.state and start no session.start
+  on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
+    if (host) {
+      await loadSettings(host).catch(error => host?.ui.debug(`settings: ${String(error)}`))
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   // Opens the settings from M2 on; until then it answers so nothing is printed
   on('command.run', { command: 'wwe' }, async () => ({})).catch(($, e, next) => next(e))
+
+  // F1 to F3: every edit of the Prompt; Control+A answered here, at once
+  on('prompt.edit', async ($, e, next) => (band ? band.onEdit(e, next) : next(e))).catch(($, e, next) => next(e))
+
+  // F4: the person's Enter
+  on('prompt.submit', async ($, e, next) => (band ? band.onSubmit(e, next) : next(e))).catch(($, e, next) =>
+    next(e),
+  )
+
+  // The band above the prompt
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!band || e.props.hasSurvey) {
+      return next(e)
+    }
+    band.markDrawn()
+    const vm = { band: await read($, bandAtom), speaking: await read($, speakingAtom) }
+    if (!isShown(vm.band)) {
+      return next(e)
+    }
+    const current = band
+    return bandView($.ui.resolve(e), vm, {
+      replace: () => void current.replace().catch(error => host?.ui.debug(`replace: ${String(error)}`)),
+      clear: () => void current.clear().catch(error => host?.ui.debug(`clear: ${String(error)}`)),
+      speak: () => {
+        const text = current.targetText()
+        if (text && speaker) {
+          void speaker.speak('band', text)
+        }
+      },
+      sendAnyway: () => void current.sendAnyway().catch(error => host?.ui.debug(`send anyway: ${String(error)}`)),
+    })
+  })
 }

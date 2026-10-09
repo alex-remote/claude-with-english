@@ -82,8 +82,12 @@ export type WweBand = {
   error: string | null
   /** The once-a-day tip after the buttons */
   showTip: boolean
-  /** F4: the hint line after Enter was blocked */
-  blocked: null | { hasImage: boolean; serviceDown: boolean }
+  /**
+   * F4: the hint line after Enter was held back. `isCleared`: the Prompt came
+   * back empty (the text went to the history), so the hint says how to get it
+   * back; Claude Code 2.1.295's terminal leaves the text in the Prompt.
+   */
+  blocked: null | { hasImage: boolean; serviceDown: boolean; isCleared: boolean; isLetThrough: boolean }
 }
 
 /** What is being read aloud now (F8), so other speak buttons dim or stop it. */

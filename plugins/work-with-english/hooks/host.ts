@@ -92,6 +92,7 @@ export type Host = {
     play: E['audio']['play']
   }
   session: {
+    id: E['session']['id']
     surfaces: E['session']['surfaces']
     version: E['session']['version']
   }
