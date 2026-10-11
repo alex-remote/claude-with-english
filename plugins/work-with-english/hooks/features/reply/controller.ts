@@ -37,6 +37,8 @@ export function createReplies(host: Host) {
   /** Paragraphs whose cache was looked for in this session */
   const looked = new Set<string>()
   const toLoad = new Set<string>()
+  /** Paragraphs a turn's end showed 翻译中… under, waiting for their reply's request */
+  const queued = new Set<string>()
 
   const today = async () => {
     const ms = await host.clock.now()
@@ -52,8 +54,10 @@ export function createReplies(host: Host) {
     const todo = reply.blocks.filter(translatable)
     const missing: Block[] = []
     for (const block of todo) {
+      // Pending since the turn's end and not asked yet: its turn now
+      const isQueued = queued.delete(block.hash)
       const now = await host.state.para.get(block.hash)
-      if (now.status === 'done' || now.status === 'pending') {
+      if (now.status === 'done' || (now.status === 'pending' && !isQueued)) {
         continue
       }
       missing.push(block)
@@ -106,6 +110,17 @@ export function createReplies(host: Host) {
       return
     }
     const chosen = settings.autoReply === 'last' ? stretch.slice(-settings.autoReplyCount) : stretch
+    // 一轮做完再翻: every reply to translate says 翻译中… at once, not only the one asked
+    for (const block of chosen.flatMap(reply => reply.blocks).filter(translatable)) {
+      let isMarked = false
+      await host.state.para.update(block.hash, para => {
+        isMarked = para.status === 'none' || para.status === 'failed'
+        return isMarked ? { ...para, status: 'pending', error: null, shown: true } : para
+      })
+      if (isMarked) {
+        queued.add(block.hash)
+      }
+    }
     // The last first: usually the conclusion, the one read first
     for (const reply of [...chosen].reverse()) {
       await translateBlock(reply, true).catch(error => host.ui.debug(`reply auto: ${String(error)}`))
@@ -165,14 +180,17 @@ export function createReplies(host: Host) {
       await translateBlock({ text: plan, blocks: segment(plan) }, true)
     },
 
-    /** 翻译 on a paragraph: show what is kept, or ask for this one paragraph */
+    /**
+     * 翻译 on a paragraph: show what is kept, or ask for this one paragraph;
+     * one still waiting for its reply's turn is asked now, ahead of the rest.
+     */
     async toggle(block: Block) {
       const now = await host.state.para.get(block.hash)
       if (now.status === 'done') {
         await host.state.para.update(block.hash, para => ({ ...para, shown: !para.shown }))
         return
       }
-      if (now.status === 'pending') {
+      if (now.status === 'pending' && !queued.delete(block.hash)) {
         return
       }
       await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))

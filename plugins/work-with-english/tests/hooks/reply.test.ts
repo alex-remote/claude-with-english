@@ -139,4 +139,42 @@ describe('reply', () => {
     expect(await ui.find({ type: 'Markdown', text: '我来看看配置是怎么加载的。' })).toBeDefined()
     expect(w.asked.length).toBe(0)
   })
+
+  test('an approved plan translated before /resume shows its translation again under it, without asking', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on)
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['Plan'] }))
+    on('classic.SessionStart', () => ({}))
+    const plan = '## Plan\n\nMove the `dotenv` call to the top of `server.ts`.\n\n1. Read the config.\n2. Add a test.'
+    const kept = ['## 计划', '把 `dotenv` 调用移到 `server.ts` 顶部。', '1. 读取配置。\n2. 加一个测试。']
+    for (const [i, block] of segment(plan).entries()) {
+      w.files.set(
+        `/Users/test/.claude/plugins/data/work-with-english-inline/replies/${block.hash.slice(0, 2)}/${block.hash}.json`,
+        JSON.stringify({ v: 1, zh: kept[i] }),
+      )
+    }
+    await start($, w)
+    // /resume: $.state is back to its defaults (P13); Claude Code draws the result again from the transcript
+    await $.classic.SessionStart({ source: 'resume' })
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({
+        plugin: 'work-with-english',
+        component: 'ToolResult',
+        requestId: `toolu-${surface}`,
+        surface,
+        viewport: { columns: 110, rows: 40, isFullscreen: true },
+        props: {
+          tool_use_id: `toolu-${surface}`,
+          tool: 'ExitPlanMode',
+          output: { plan, isAgent: false },
+          isErrored: false,
+        },
+      })
+      await w.clock.advance(400)
+      for (const zh of kept) {
+        expect(await ui.find({ type: 'Markdown', text: zh })).toBeDefined()
+      }
+      await ui.unmount()
+    }
+    expect(w.asked.length).toBe(0)
+  })
 })

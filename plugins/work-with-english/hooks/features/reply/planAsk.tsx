@@ -4,6 +4,7 @@ import type { WwePara } from '../../../types'
 import { progressInline } from '../../core/copy/common'
 import { hash } from '../../core/hash'
 import type { Block } from '../../core/text/segment'
+import { translationOf } from './view'
 import type { ReplyUi } from './view'
 
 // F6 › 计划和提问: the lines of a question Claude asks, translated above its
@@ -59,7 +60,7 @@ export function planOf(output: unknown): string | null {
  * (Claude Code refuses a Markdown there: its rows are not bounded).
  */
 const under = (ui: ReplyUi, para: WwePara, isPlain: boolean) => {
-  const { Text, Markdown } = ui
+  const { Text } = ui
   if (para.status === 'pending') {
     return <Text dimColor>{progressInline('翻译')}</Text>
   }
@@ -69,7 +70,7 @@ const under = (ui: ReplyUi, para: WwePara, isPlain: boolean) => {
   if (!para.zh) {
     return null
   }
-  return isPlain ? <Text dimColor>{para.zh}</Text> : <Markdown text={para.zh} dimColor />
+  return isPlain ? <Text dimColor>{para.zh}</Text> : translationOf(ui, para.zh)
 }
 
 /** The dialog's translation above it, its options numbered as the dialog numbers them. */

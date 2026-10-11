@@ -2,6 +2,7 @@ import type { WweAnalysis, WweLookup, WweTextResult } from '../../../types'
 import { createSlot } from '../../core/async/slot'
 import { analysisFailed } from '../../core/copy/analysis'
 import { sentenceOf } from '../../core/text/selection'
+import { formIn } from '../../core/text/wordform'
 import { run } from '../../services/translate'
 import type { Host } from '../../host'
 
@@ -76,18 +77,24 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
       await lookupAndCard(word, sentence, known)
     },
 
-    /** F10 from F11's hard words: the word in the first sentence of the paragraph that holds it */
+    /**
+     * F10 from F11's hard words, listed in their base form: the word as the
+     * paragraph first writes it, and that sentence, as if it were selected
+     * there (retrieve in "is retrieving"), so 原句 bolds the form written.
+     */
     async analyseHardWord(word: string) {
       const now = await host.state.analysis.get()
       if (!now || now.kind !== 'text' || !now.text) {
         return
       }
       const back = { subject: now.subject, isSentence: now.isSentence, text: now.text }
-      const sentence = sentenceIn(now.text, word) ?? sentenceOf(now.subject, word)
+      const found = foundIn(now.text, now.subject, word)
+      const subject = found?.form ?? word
+      const sentence = found?.sentence ?? null
       await host.state.analysis.update(() => ({
         kind: 'word',
         status: 'pending',
-        subject: word,
+        subject,
         sentence,
         isSentence: false,
         text: null,
@@ -96,7 +103,7 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
         back,
       }))
       await host.state.pane.update(pane => ({ ...pane, view: 'word' }))
-      await lookupAndCard(word, sentence)
+      await lookupAndCard(subject, sentence)
     },
 
     /** ← 返回语法分析: the analysis as it was, not asked again */
@@ -128,8 +135,19 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
   }
 }
 
-/** The first of the analysed sentences that holds the word, whole word, any case */
-function sentenceIn(text: WweTextResult, word: string): string | null {
-  const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
-  return text.sentences.find(sentence => pattern.test(sentence.en))?.en ?? null
+/**
+ * The first of the analysed sentences that writes the word, in any of its
+ * forms, a whole word; else the paragraph's own sentence that does. Null
+ * when neither has it.
+ */
+function foundIn(text: WweTextResult, paragraph: string, word: string): { form: string; sentence: string } | null {
+  for (const { en } of text.sentences) {
+    const form = formIn(en, word)
+    if (form) {
+      return { form, sentence: en }
+    }
+  }
+  const form = formIn(paragraph, word)
+  const sentence = form && sentenceOf(paragraph, form)
+  return form && sentence ? { form, sentence } : null
 }

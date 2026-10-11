@@ -415,13 +415,19 @@ export const register: Register = on => {
   // F6 › 计划和提问: the approved plan's translation under it
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     const plan = e.props.tool === 'ExitPlanMode' ? planOf(e.props.output) : null
-    if (!replies || plan === null) {
+    const current = replies
+    if (!current || plan === null) {
       return next(e)
     }
     const blocks = segment(plan)
     const paras = []
     for (const block of blocks) {
-      paras.push(await read($, memberOf(paraAtom, { requestId: block.hash })))
+      const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
+      // Translated before /resume: kept on disk, as a reply's paragraph is
+      if (para.status === 'none' && translatable(block)) {
+        current.note(block.hash)
+      }
+      paras.push(para)
     }
     const drawn = await next(e)
     if (!drawn || paras.every(para => para.status === 'none')) {

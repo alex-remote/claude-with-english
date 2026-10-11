@@ -16,6 +16,7 @@ import {
   analysing,
 } from '../../core/copy/analysis'
 import { speakButton } from '../../core/copy/band'
+import { boldParts } from '../../core/text/wordform'
 import type { SavedStatus } from '../wordbook/controller'
 import { addControl } from '../wordbook/view'
 
@@ -229,18 +230,18 @@ function wordCard(
   )
 }
 
-/** The sentence with the selected form in bold (F10 › 原句) */
+/** The sentence with the selected form in bold, a whole word: cause, never the one in because (F10 › 原句) */
 function bolded(ui: AnalysisUi, sentence: string, form: string) {
   const { Text } = ui
-  const at = sentence.toLowerCase().indexOf(form.toLowerCase())
-  if (at < 0 || form === '') {
+  const parts = boldParts(sentence, form)
+  if (!parts) {
     return sentence
   }
   return [
-    sentence.slice(0, at),
+    parts.before,
     <Text key="bold" bold>
-      {sentence.slice(at, at + form.length)}
+      {parts.word}
     </Text>,
-    sentence.slice(at + form.length),
+    parts.after,
   ]
 }

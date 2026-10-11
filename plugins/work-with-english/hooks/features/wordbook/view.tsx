@@ -17,6 +17,7 @@ import {
   sentencesHeading,
   wordsHeading,
 } from '../../core/copy/wordbook'
+import { boldParts } from '../../core/text/wordform'
 import type { SavedStatus } from './controller'
 
 // F12 as drawn: the 加入单词本 control in its four states, the buttons on a
@@ -77,20 +78,20 @@ export function mineView(
 const SHOWN_MAX = 300
 const shown = (text: string) => (text.length > SHOWN_MAX ? `${text.slice(0, SHOWN_MAX)}…` : text)
 
-/** The sentence with the word as it stood there in bold */
+/** The sentence with the word as it stood there in bold, a whole word as on the Anki card (use, never the one in because) */
 function bolded(ui: BookUi, sentence: string, form: string) {
   const { Text } = ui
   const text = shown(sentence)
-  const at = form === '' ? -1 : text.toLowerCase().indexOf(form.toLowerCase())
-  if (at < 0) {
+  const parts = boldParts(text, form)
+  if (!parts) {
     return text
   }
   return [
-    text.slice(0, at),
+    parts.before,
     <Text key="bold" bold>
-      {text.slice(at, at + form.length)}
+      {parts.word}
     </Text>,
-    text.slice(at + form.length),
+    parts.after,
   ]
 }
 
