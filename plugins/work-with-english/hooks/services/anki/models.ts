@@ -125,7 +125,7 @@ hr#answer { border: none; border-top: 1px solid var(--wwe-line); }
 `
 
 export const WORD_MODEL: AnkiModel = {
-  modelName: 'work-with-english 单词',
+  modelName: 'claude-with-english 单词',
   inOrderFields: WORD_FIELDS,
   css: CARD_CSS,
   isCloze: false,
@@ -133,7 +133,7 @@ export const WORD_MODEL: AnkiModel = {
 }
 
 export const SENTENCE_MODEL: AnkiModel = {
-  modelName: 'work-with-english 句子',
+  modelName: 'claude-with-english 句子',
   inOrderFields: SENTENCE_FIELDS,
   css: CARD_CSS,
   isCloze: false,

@@ -255,7 +255,7 @@ describe('Anki: setup and connection', () => {
     expect(await connectionStatus(fake.host)).toBe('ok')
     expect(fake.anki.actions().slice(0, 4)).toEqual(['requestPermission', 'deckNames', 'createDeck', 'modelNamesAndIds'])
     expect(fake.anki.state.calls.every(c => c.url === ANKI_URL && c.method === 'POST' && c.version === 6)).toBe(true)
-    expect(fake.anki.state.decks).toContain('work-with-english')
+    expect(fake.anki.state.decks).toContain('claude-with-english')
     expect(fake.anki.state.models.get(WORD_MODEL.modelName)?.fields).toEqual([...WORD_FIELDS])
     expect(fake.anki.state.models.get(SENTENCE_MODEL.modelName)?.fields).toEqual([...SENTENCE_FIELDS])
     expect(fake.store.get(EVER_KEY)).toBe(true)
@@ -308,7 +308,7 @@ describe('Anki: cards', () => {
     expect(fake.runs).toContainEqual(['mkdir', '-p', `${DATA}/anki`])
     expect(fake.runs).toContainEqual(['say', '-o', audio, '--file-format=m4af', '--data-format=aac', '--', 'cause'])
     const add = fake.anki.state.calls.find(c => c.action === 'addNote')?.params.note
-    expect(add?.deckName).toBe('work-with-english')
+    expect(add?.deckName).toBe('claude-with-english')
     expect(add?.audio).toEqual([{ path: audio, filename: `wwe-${audioOf('cause')}.m4a`, fields: ['朗读'] }])
     expect(note?.fields['单词']).toBe('cause')
     expect(note?.fields['原句']).toContain('<b>cause</b>')
@@ -461,7 +461,7 @@ describe('Anki: 重复怎么处理', () => {
     expect(await syncWord(fake.host, book, 'cause')).toEqual({ isSynced: true, link: 'ok' })
     const notes = fake.anki.notesOf(WORD_MODEL.modelName)
     expect(notes).toHaveLength(1)
-    expect(notes[0]?.deckName).toBe('work-with-english')
+    expect(notes[0]?.deckName).toBe('claude-with-english')
     expect(notes[0]?.fields['原句']).toContain('<b>caused</b>')
     expect(fake.anki.state.decks).toContain('english')
   })
@@ -516,7 +516,7 @@ describe('Anki: 重复怎么处理', () => {
     expect(fake.anki.actions()).not.toContain('addNote')
     expect(fake.anki.actions()).not.toContain('createModel')
     expect((await readWord(fake.host, 'cause'))?.sync).toBe('pending')
-    expect(broken.broken).toBe('Anki 里的卡片类型“work-with-english 单词”缺少字段“原句”，已停止同步。把字段加回去后会继续同步。')
+    expect(broken.broken).toBe('Anki 里的卡片类型“claude-with-english 单词”缺少字段“原句”，已停止同步。把字段加回去后会继续同步。')
   })
 
   test('a card type of ours renamed stops syncing; one deleted is made again', async () => {

@@ -136,7 +136,7 @@ describe('common', () => {
       '未开启全屏渲染，段落上的按钮和查词暂时无法使用，横条上的按钮不能用鼠标点。输入 /tui fullscreen 即可开启。',
     )
     expect(common.notMacLocalToast()).toBe(
-      'work-with-english 第一版仅支持在 macOS 本机上运行，部分功能可能无法使用。',
+      'claude-with-english 第一版仅支持在 macOS 本机上运行，部分功能可能无法使用。',
     )
   })
 

@@ -24,7 +24,7 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
     await host.state.pane.update(pane => ({ ...pane, view: analysis.kind }))
     // The pane takes the keys only from an empty Prompt (阅读辅助 › 关闭和返回)
     const box = await host.prompt.read().catch(() => ({ text: 'x', cursor: 0 }))
-    await host.ui.open({ id: PANE_ID, title: 'work-with-english', closeOnEscape: true, ...(box.text === '' ? { focus: true } : {}) })
+    await host.ui.open({ id: PANE_ID, title: 'claude-with-english', closeOnEscape: true, ...(box.text === '' ? { focus: true } : {}) })
   }
 
   /** The card on the lookup: the selection line's, when it has one (or one on its way), so both say the same */

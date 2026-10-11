@@ -227,13 +227,13 @@ const focusOn = (element: string) => ({ component: 'Pane', requestId: 'wwe', ele
 describe('设置 Pane', () => {
   test('/wwe：停在“翻译”页，拿到焦点，Esc 关闭，不憋住 Toast', async () => {
     const { fake } = await opened()
-    expect(fake.opened).toEqual([{ id: 'wwe', title: 'work-with-english 设置', focus: true, closeOnEscape: true }])
+    expect(fake.opened).toEqual([{ id: 'wwe', title: 'claude-with-english 设置', focus: true, closeOnEscape: true }])
     expect(fake.state.pane).toMatchObject({ view: 'settings', tab: 'translate', errors: {} })
   })
 
   test('六个标签依次切换，每页显示自己的设置，切换不保存', async () => {
     const { fake, ui } = await opened()
-    expect(ui.find({ type: 'Text', text: 'work-with-english 设置' })).toBeDefined()
+    expect(ui.find({ type: 'Text', text: 'claude-with-english 设置' })).toBeDefined()
     expect(ui.findAll({ type: 'Button' }).slice(0, 7).map(button => button.props.label)).toEqual([
       '翻译',
       '阅读',
@@ -1153,7 +1153,7 @@ const PANE = {
   requestId: HARNESS,
   viewport: { columns: 120, rows: 40, isFullscreen: true },
   props: {
-    title: 'work-with-english 设置',
+    title: 'claude-with-english 设置',
     isFocused: true,
     bodyColumns: 60,
     placement: 'dock',
@@ -1203,7 +1203,7 @@ describe('设置 Pane 在两种 surface 上', () => {
         const mounted = await $.ui.mount({ ...PANE, surface }).catch((error: unknown) => {
           throw new Error(`${surface}, ${name}: ${String(error)}`)
         })
-        expect(await mounted.find({ type: 'Text', text: 'work-with-english 设置' })).toBeDefined()
+        expect(await mounted.find({ type: 'Text', text: 'claude-with-english 设置' })).toBeDefined()
         await mounted.unmount()
       }
     }
@@ -1322,7 +1322,7 @@ describe('M6 的页面在两种 surface 上', () => {
           const mounted = await $.ui.mount({ ...PANE, surface }).catch((error: unknown) => {
             throw new Error(`${surface}, ${name}: ${String(error)}`)
           })
-          expect(await mounted.find({ type: 'Text', text: 'work-with-english 设置' })).toBeDefined()
+          expect(await mounted.find({ type: 'Text', text: 'claude-with-english 设置' })).toBeDefined()
           await mounted.unmount()
         }
       }

@@ -92,7 +92,7 @@ export const EMPTY_SENTENCES = '还没有句子。在语法分析里每句旁边
 /** The ✕ of a row, for screen readers */
 export const deleteLabel = (name: string) => `从单词本删除 ${name}`
 
-/** Connected: ✓ 已连接 Anki，新加的单词和句子会自动建卡到牌组 work-with-english。 */
+/** Connected: ✓ 已连接 Anki，新加的单词和句子会自动建卡到牌组 claude-with-english。 */
 export const ankiConnected = (deck: string) => `✓ 已连接 Anki，新加的单词和句子会自动建卡到牌组 ${deck}。`
 
 /**

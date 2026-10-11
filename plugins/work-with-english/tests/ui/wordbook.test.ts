@@ -83,7 +83,7 @@ describe('单词本：加入', () => {
     await w.wordbook.addWord(CAUSE_CARD)
     expect(w.status(key)).toBe('added')
     expect(w.toasts).toEqual([wb.addedWordToast('cause', true)])
-    expect(w.anki.notesOf('work-with-english 单词').length).toBe(1)
+    expect(w.anki.notesOf('claude-with-english 单词').length).toBe(1)
   })
 
   test('同一个词从另一句再加：按钮是“补上这一句”，点了补进这个词，不新建', async () => {
@@ -96,7 +96,7 @@ describe('单词本：加入', () => {
     await w.wordbook.addWord(other)
     expect(w.status(key)).toBe('added')
     expect(w.toasts[1]).toBe(wb.addedToWordToast('cause', true))
-    expect(w.anki.notesOf('work-with-english 单词').length).toBe(1)
+    expect(w.anki.notesOf('claude-with-english 单词').length).toBe(1)
   })
 
   test('Anki 没开：照样加入，Toast 不提 Anki；打开单词本页时写明未连接和等待同步的数量', async () => {
@@ -170,7 +170,7 @@ describe('单词本：加入', () => {
     const w = world()
     await Promise.all([w.wordbook.addSentence(MOVE), w.wordbook.addSentence(MOVE)])
     expect(w.toasts.length).toBe(1)
-    expect(w.anki.notesOf('work-with-english 句子').length).toBe(1)
+    expect(w.anki.notesOf('claude-with-english 句子').length).toBe(1)
   })
 })
 
@@ -182,7 +182,7 @@ describe('单词本页', () => {
     await w.wordbook.remove('word', 'cause')
     expect(w.toasts).toContain(wb.deletedWordToast('cause'))
     expect(w.book().words).toEqual([])
-    expect(w.anki.notesOf('work-with-english 单词').length).toBe(1)
+    expect(w.anki.notesOf('claude-with-english 单词').length).toBe(1)
     expect(w.status(savedKeyOf.word('cause', CAUSE_CARD.sentence))).toBe('none')
   })
 
@@ -207,7 +207,7 @@ describe('单词本页', () => {
     await w.wordbook.addMine('Could you take a look?')
     expect(w.toasts).toContain(wb.syncedToast(1, 0))
     expect(w.book().anki).toMatchObject({ link: 'ok', reason: null, hasEverConnected: true, pendingWords: 0, pendingSentences: 0 })
-    expect(textOf(ankiLine(UI, { book: w.book(), settings: DEFAULT_VIEW }))).toBe(wb.ankiConnected('work-with-english'))
+    expect(textOf(ankiLine(UI, { book: w.book(), settings: DEFAULT_VIEW }))).toBe(wb.ankiConnected('claude-with-english'))
   })
 
   test('页开着时 Anki 关了，再加入：这一条待同步，状态行写未连接和等待的数量', async () => {
@@ -224,13 +224,13 @@ describe('单词本页', () => {
   test('页开着时卡片类型被改名，再加入：状态行写明原因', async () => {
     const w = world()
     await w.wordbook.loadPage()
-    const model = w.anki.state.models.get('work-with-english 句子')
-    w.anki.state.models.delete('work-with-english 句子')
+    const model = w.anki.state.models.get('claude-with-english 句子')
+    w.anki.state.models.delete('claude-with-english 句子')
     if (model) {
       w.anki.state.models.set('我的句子', model)
     }
     await w.wordbook.addSentence(MOVE)
-    const reason = wb.ankiModelRenamed('work-with-english 句子', '我的句子')
+    const reason = wb.ankiModelRenamed('claude-with-english 句子', '我的句子')
     expect(w.book().anki).toMatchObject({ link: 'broken', reason })
     expect(textOf(ankiLine(UI, { book: w.book(), settings: DEFAULT_VIEW }))).toBe(reason)
   })
@@ -346,7 +346,7 @@ describe('单词本的画法', () => {
   test('状态行：已连接写牌组，没连上写等待数量，卡片类型改坏时写原因', () => {
     const line = (anki: Partial<WweBook['anki']>) =>
       textOf(ankiLine(UI, { book: { ...EMPTY_BOOK, anki: { ...EMPTY_BOOK.anki, ...anki } }, settings: DEFAULT_VIEW }))
-    expect(line({ link: 'ok' })).toBe(wb.ankiConnected('work-with-english'))
+    expect(line({ link: 'ok' })).toBe(wb.ankiConnected('claude-with-english'))
     expect(line({ link: 'offline', pendingWords: 1, pendingSentences: 1 })).toBe(wb.ankiOffline(1, 1))
     expect(line({ link: 'broken', reason: wb.ANKI_REFUSED })).toBe(wb.ANKI_REFUSED)
     expect(line({ link: 'unknown' })).toBe('')

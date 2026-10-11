@@ -31,7 +31,7 @@ describe('register', () => {
     })
 
     expect(registered).toMatchObject([
-      { name: 'wwe', description: '打开 work-with-english 设置', immediate: true },
+      { name: 'wwe', description: '打开 claude-with-english 设置', immediate: true },
     ])
     expect(answer).toEqual({})
     expect(opened).toMatchObject([{ id: 'wwe', focus: true, closeOnEscape: true }])

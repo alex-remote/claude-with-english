@@ -24,7 +24,7 @@ export const notFullscreenToast = () =>
 
 /** Once, the first time it starts on a system other than macOS or in a remote session */
 export const notMacLocalToast = () =>
-  'work-with-english 第一版仅支持在 macOS 本机上运行，部分功能可能无法使用。'
+  'claude-with-english 第一版仅支持在 macOS 本机上运行，部分功能可能无法使用。'
 
 /** Each save: 已保存：翻译延迟 1.5 s; a value shown as nothing (a short API Key) leaves no space behind */
 export const savedToast = (item: string, value: string) =>

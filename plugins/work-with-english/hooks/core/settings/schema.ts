@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: WweSettings = {
   voiceOpenai: 'coral',
   voiceEleven: '',
   ankiSync: true,
-  ankiDeck: 'work-with-english',
+  ankiDeck: 'claude-with-english',
   claudeModel: 'haiku',
   openaiBaseUrl: '',
   openaiKey: '',

@@ -74,8 +74,8 @@ const SENSE_TAG = '<span class="wwe-tag">本句</span>'
 
 describe('models', () => {
   test('the two card types are named as in Anki and keep their fields in order', () => {
-    expect(WORD_MODEL.modelName).toBe('work-with-english 单词')
-    expect(SENTENCE_MODEL.modelName).toBe('work-with-english 句子')
+    expect(WORD_MODEL.modelName).toBe('claude-with-english 单词')
+    expect(SENTENCE_MODEL.modelName).toBe('claude-with-english 句子')
     expect([...WORD_MODEL.inOrderFields]).toEqual([
       '单词',
       '音标',
@@ -272,7 +272,7 @@ describe('重复怎么处理', () => {
   })
 
   test('改过牌组名: the card is looked for in every deck, by card type and first field', () => {
-    expect(findWordQuery('cause')).toBe('"note:work-with-english 单词" "单词:cause"')
+    expect(findWordQuery('cause')).toBe('"note:claude-with-english 单词" "单词:cause"')
     expect(findWordQuery('cause')).not.toContain('deck:')
     expect(findSentenceQuery('I found the cause.')).not.toContain('deck:')
   })
@@ -391,8 +391,8 @@ describe('sentence card fields', () => {
 
 describe('findNotes queries', () => {
   test('by card type and the first field, in every deck', () => {
-    expect(findWordQuery('cause')).toBe('"note:work-with-english 单词" "单词:cause"')
-    expect(findSentenceQuery('I found the cause.')).toBe('"note:work-with-english 句子" "句子:I found the cause."')
+    expect(findWordQuery('cause')).toBe('"note:claude-with-english 单词" "单词:cause"')
+    expect(findSentenceQuery('I found the cause.')).toBe('"note:claude-with-english 句子" "句子:I found the cause."')
     expect(findWordQuery('cause')).not.toContain('deck:')
   })
 
@@ -402,16 +402,16 @@ describe('findNotes queries', () => {
     expect(escapeSearch('C:\\tmp')).toBe('C\\:\\\\tmp')
     expect(escapeSearch('__init__ *')).toBe('\\_\\_init\\_\\_ \\*')
     expect(findSentenceQuery('Note: run "npm test" in __dirname.')).toBe(
-      '"note:work-with-english 句子" "句子:Note\\: run \\"npm test\\" in \\_\\_dirname."',
+      '"note:claude-with-english 句子" "句子:Note\\: run \\"npm test\\" in \\_\\_dirname."',
     )
   })
 
   test('a sentence starting re: is a value, not a regular expression', () => {
-    expect(findSentenceQuery('re: the build')).toBe('"note:work-with-english 句子" "句子:re\\: the build"')
+    expect(findSentenceQuery('re: the build')).toBe('"note:claude-with-english 句子" "句子:re\\: the build"')
   })
 
   test('the value searched is the field as stored, so HTML-escaped', () => {
-    expect(findSentenceQuery('a < b && c')).toBe('"note:work-with-english 句子" "句子:a &lt; b &amp;&amp; c"')
+    expect(findSentenceQuery('a < b && c')).toBe('"note:claude-with-english 句子" "句子:a &lt; b &amp;&amp; c"')
     expect(findSentenceQuery('  a   b ')).toBe(findSentenceQuery('a b'))
   })
 
@@ -489,9 +489,9 @@ describe('word book copy', () => {
   })
 
   test('the status line, connected and not', () => {
-    const base = { isSyncOn: true, deck: 'work-with-english', pendingWords: 1, pendingSentences: 1 }
+    const base = { isSyncOn: true, deck: 'claude-with-english', pendingWords: 1, pendingSentences: 1 }
     expect(wb.ankiStatus({ ...base, link: 'ok' })).toBe(
-      '✓ 已连接 Anki，新加的单词和句子会自动建卡到牌组 work-with-english。',
+      '✓ 已连接 Anki，新加的单词和句子会自动建卡到牌组 claude-with-english。',
     )
     expect(wb.ankiStatus({ ...base, link: 'offline' })).toBe(
       '未连接 Anki。打开 Anki 并装好 AnkiConnect 插件后，会自动同步，现在有 1 个词、1 个句子等待同步。',
@@ -500,7 +500,7 @@ describe('word book copy', () => {
   })
 
   test('no status line with syncing off, nor before the page’s check has answered', () => {
-    const base = { deck: 'work-with-english', pendingWords: 0, pendingSentences: 0 }
+    const base = { deck: 'claude-with-english', pendingWords: 0, pendingSentences: 0 }
     expect(wb.ankiStatus({ ...base, isSyncOn: false, link: 'ok' })).toBeNull()
     expect(wb.ankiStatus({ ...base, isSyncOn: true, link: 'unknown' })).toBeNull()
   })
@@ -510,12 +510,12 @@ describe('word book copy', () => {
       wb.ankiStatus({
         isSyncOn: true,
         link: 'broken',
-        deck: 'work-with-english',
+        deck: 'claude-with-english',
         pendingWords: 0,
         pendingSentences: 0,
         brokenModel: WORD_MODEL.modelName,
       }),
-    ).toBe('Anki 里的卡片类型“work-with-english 单词”被修改，已停止同步。删除这个卡片类型后会自动重建。')
+    ).toBe('Anki 里的卡片类型“claude-with-english 单词”被修改，已停止同步。删除这个卡片类型后会自动重建。')
   })
 
   test('no sentence of the word book is split with “·”', () => {
@@ -524,8 +524,8 @@ describe('word book copy', () => {
       wb.addedToWordToast('cause', true),
       wb.syncedToast(2, 1),
       wb.ankiOffline(1, 1),
-      wb.ankiConnected('work-with-english'),
-      wb.ankiModelBroken('work-with-english 句子'),
+      wb.ankiConnected('claude-with-english'),
+      wb.ankiModelBroken('claude-with-english 句子'),
     ]
     for (const text of texts) {
       expect(text).not.toContain('·')

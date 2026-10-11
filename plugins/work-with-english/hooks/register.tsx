@@ -244,7 +244,7 @@ export const register: Register = on => {
     try {
       await bound.command.register({
         name: 'wwe',
-        description: '打开 work-with-english 设置',
+        description: '打开 claude-with-english 设置',
         immediate: true,
       })
     } catch (error) {

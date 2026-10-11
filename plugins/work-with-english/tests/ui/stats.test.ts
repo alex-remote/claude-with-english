@@ -533,7 +533,7 @@ const PANE = {
   requestId: HARNESS,
   viewport: { columns: 120, rows: 40, isFullscreen: true },
   props: {
-    title: 'work-with-english 设置',
+    title: 'claude-with-english 设置',
     isFocused: true,
     bodyColumns: 60,
     placement: 'dock',

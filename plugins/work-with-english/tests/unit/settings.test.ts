@@ -40,7 +40,7 @@ const OPENAI = saved({ openaiBaseUrl: 'https://api.openai.com/v1', openaiKey: KE
 
 describe('设置 › 保存：不保存的三种情况', () => {
   test('值没变：输入框和下拉框都不保存', () => {
-    expect(commitInput('ankiDeck', 'work-with-english', saved())).toEqual({ kind: 'noop' })
+    expect(commitInput('ankiDeck', 'claude-with-english', saved())).toEqual({ kind: 'noop' })
     expect(commitInput('autoReplyCount', '1', saved())).toEqual({ kind: 'noop' })
     expect(commitInput('openaiBaseUrl', 'https://api.openai.com/v1', OPENAI)).toEqual({ kind: 'noop' })
     expect(selectValue('strict', true, saved())).toEqual({ kind: 'noop' })
@@ -89,7 +89,7 @@ describe('设置的默认值（功能地图“设置”表的“默认”列）'
     expect(shown('voiceSystem')).toBe('系统默认')
     expect(shown('voiceOpenai')).toBe('coral')
     expect(shown('ankiSync')).toBe('开')
-    expect(shown('ankiDeck')).toBe('work-with-english')
+    expect(shown('ankiDeck')).toBe('claude-with-english')
     expect(shown('claudeModel')).toBe('Haiku')
     expect([DEFAULT_SETTINGS.openaiBaseUrl, DEFAULT_SETTINGS.openaiKey, DEFAULT_SETTINGS.openaiModel]).toEqual(['', '', ''])
     expect(DEFAULT_SETTINGS.openaiTtsModel).toBe('')

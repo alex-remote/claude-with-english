@@ -9,3 +9,7 @@ tools/logs/
 .claude/worktrees/
 # Written by Claude Code beside the types it lays; local to this machine
 plugins/work-with-english/tsconfig.json
+# Only on this machine: the design docs, and the instructions for coding agents
+docs/
+CLAUDE.md
+AGENTS.md

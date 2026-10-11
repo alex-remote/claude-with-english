@@ -26,7 +26,7 @@ const PANE = {
   requestId: 'wwe',
   viewport: { columns: 120, rows: 40, isFullscreen: true },
   props: {
-    title: 'work-with-english',
+    title: 'claude-with-english',
     isFocused: true,
     bodyColumns: 60,
     placement: 'dock',

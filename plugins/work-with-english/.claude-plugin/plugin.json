@@ -1,11 +1,14 @@
 {
   "name": "work-with-english",
-  "displayName": "work-with-english",
+  "displayName": "claude-with-english",
   "version": "0.1.0",
   "description": "Practice a target language while working in Claude Code: see a live translation of what you type, use it or retype it, and have Claude reply in that language.",
-  "author": { "name": "alex" },
+  "author": {
+    "name": "alex"
+  },
   "homepage": "https://github.com/alex-remote/claude-with-english",
   "repository": "https://github.com/alex-remote/claude-with-english",
   "license": "GPL-3.0-or-later",
+  "icon": "./assets/icon.png",
   "types": "./types/index.d.ts"
 }

@@ -11,7 +11,7 @@ import { SOURCE_LANG, TARGET_LANG, uiNameOf } from './lang'
 const SOURCE_NAME = uiNameOf(SOURCE_LANG)
 const TARGET_NAME = uiNameOf(TARGET_LANG)
 
-export const PANE_TITLE = 'work-with-english 设置'
+export const PANE_TITLE = 'claude-with-english 设置'
 
 export type SettingsTab = 'translate' | 'reading' | 'wordbook' | 'services' | 'shortcuts' | 'stats'
 
