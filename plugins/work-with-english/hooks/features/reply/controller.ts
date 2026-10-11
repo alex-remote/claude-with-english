@@ -10,6 +10,7 @@ import { readJson, writeJson } from '../../services/files'
 import { run } from '../../services/translate'
 import type { Host } from '../../host'
 import { addToDay } from '../stats/record'
+import { askLines, blockOfLine, planOf } from './planAsk'
 
 // F6 回复译文: collects the main conversation's reply blocks as they are
 // appended, and when the turn ends (or stops for a question or a plan)
@@ -144,6 +145,24 @@ export function createReplies(host: Host) {
         return
       }
       void finish().catch(error => host.ui.debug(`reply finish: ${String(error)}`))
+    },
+
+    /** F6 › 计划和提问: the question and its options, as Claude asks (never counted in 每轮最后 N 条) */
+    async translateAsk(questions: readonly unknown[]) {
+      if (!(await host.state.settings.get()).autoPlanAsk) {
+        return
+      }
+      const blocks = askLines(questions).map(blockOfLine)
+      await translateBlock({ text: '', blocks }, true)
+    },
+
+    /** F6 › 计划和提问: the approved plan, from the result of the call that left plan mode */
+    async translatePlan(output: unknown) {
+      const plan = planOf(output)
+      if (plan === null || !(await host.state.settings.get()).autoPlanAsk) {
+        return
+      }
+      await translateBlock({ text: plan, blocks: segment(plan) }, true)
     },
 
     /** 翻译 on a paragraph: show what is kept, or ask for this one paragraph */

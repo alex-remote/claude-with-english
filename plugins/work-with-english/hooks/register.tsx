@@ -12,6 +12,7 @@ import { notFullscreen, startupToasts } from './features/env/toasts'
 import { bandView, isShown } from './features/band/view'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
+import { askLines, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
 import { replyView } from './features/reply/view'
 import type { ReplyPart } from './features/reply/view'
 import { createSpeaker } from './features/speak/controller'
@@ -239,12 +240,53 @@ export const register: Register = on => {
     replies?.onTurnComplete(e)
     return next(e)
   })
-  on('tool.call', { tool: ['AskUserQuestion', 'ExitPlanMode'] }, ($, e, next) => {
-    if (e.agentId === undefined) {
-      replies?.onWait()
+  on('tool.call', { tool: ['AskUserQuestion', 'ExitPlanMode'] }, async ($, e, next) => {
+    const current = e.agentId === undefined ? replies : null
+    current?.onWait()
+    if (current && e.tool === 'AskUserQuestion') {
+      void current.translateAsk(e.questions).catch(error => host?.ui.debug(`ask: ${String(error)}`))
     }
-    return next(e)
+    const ran = await next(e)
+    if (current && e.tool === 'ExitPlanMode') {
+      void current.translatePlan(ran.result).catch(error => host?.ui.debug(`plan: ${String(error)}`))
+    }
+    return ran
   }).catch(($, e, next) => next(e))
+
+  // F6 › 计划和提问: the question's translation above Claude Code's own dialog
+  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
+    const lines = askLines(e.props.questions)
+    if (!replies || lines.length === 0) {
+      return next(e)
+    }
+    const paras = []
+    for (const line of lines) {
+      paras.push(await read($, memberOf(paraAtom, { requestId: blockOfLine(line).hash })))
+    }
+    if (paras.every(para => para.status === 'none')) {
+      return next(e)
+    }
+    // Claude Code's dialog goes in exactly once, under the translation
+    return askView($.ui.resolve(e), lines, paras, await next(e))
+  })
+
+  // F6 › 计划和提问: the approved plan's translation under it
+  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+    const plan = e.props.tool === 'ExitPlanMode' ? planOf(e.props.output) : null
+    if (!replies || plan === null) {
+      return next(e)
+    }
+    const blocks = segment(plan)
+    const paras = []
+    for (const block of blocks) {
+      paras.push(await read($, memberOf(paraAtom, { requestId: block.hash })))
+    }
+    const drawn = await next(e)
+    if (!drawn || paras.every(para => para.status === 'none')) {
+      return drawn
+    }
+    return planView($.ui.resolve(e), blocks, paras, drawn)
+  })
 
   // F6: each paragraph as Claude Code draws it, its translation under it
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
