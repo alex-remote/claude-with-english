@@ -1,0 +1,16 @@
+{
+  "name": "work-with-english",
+  "owner": { "name": "alex-remote", "url": "https://github.com/alex-remote" },
+  "description": "work-with-english: practice English while you work in Claude Code.",
+  "plugins": [
+    {
+      "name": "work-with-english",
+      "displayName": "work-with-english",
+      "description": "Practice a target language while working in Claude Code: see a live translation of what you type, use it or retype it, and have Claude reply in that language.",
+      "source": {
+        "source": "archive",
+        "url": "https://github.com/alex-remote/claude-with-english/releases/download/v0.1.0/work-with-english-0.1.0.zip"
+      }
+    }
+  ]
+}

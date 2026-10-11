@@ -1,0 +1,85 @@
+# Releases the plugin when a v* tag is pushed (docs/dev-plan.md, 发布):
+# checks it, packs it with tools/pack.sh, attaches the zip to a GitHub
+# Release, and, for a release that is not a pre-release (v0.1.0, not
+# v0.1.0-rc1), points .claude-plugin/marketplace.json at the zip with its
+# sha256 on main, so `/plugin marketplace update` brings it to users.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tag names the plugin's version
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("plugins/work-with-english/.claude-plugin/plugin.json"))["version"])')
+          case "${GITHUB_REF_NAME#v}" in
+            "$version" | "$version"-rc*) ;;
+            *) echo "The tag $GITHUB_REF_NAME does not name version $version in plugin.json"; exit 1 ;;
+          esac
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Claude Code 2.1.288 is the oldest the plugin supports: the Desktop app ships it
+      - name: Type-check against the 2.1.288 types
+        run: npx -y -p typescript@5.9 tsc -p tools/tsconfig.288.json
+
+      - name: Install Claude Code
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Validate and test
+        run: |
+          claude plugin validate --strict plugins/work-with-english
+          claude plugin validate --strict .
+          claude plugin test plugins/work-with-english
+
+      - name: Pack
+        run: sh tools/pack.sh
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-rc*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "dist/work-with-english-$VERSION.zip" \
+            --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+
+      - name: Point the marketplace at this release
+        if: ${{ !contains(github.ref_name, '-rc') }}
+        run: |
+          zip="dist/work-with-english-$VERSION.zip"
+          sha=$(sha256sum "$zip" | cut -d' ' -f1)
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/work-with-english-${VERSION}.zip"
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 - "$url" "$sha" <<'PY'
+          import json, sys
+          path = '.claude-plugin/marketplace.json'
+          with open(path) as f:
+              marketplace = json.load(f)
+          for entry in marketplace['plugins']:
+              if entry['name'] == 'work-with-english':
+                  entry['source'] = {'source': 'archive', 'url': sys.argv[1], 'sha256': sys.argv[2]}
+          with open(path, 'w') as f:
+              json.dump(marketplace, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .claude-plugin/marketplace.json
+          git commit -m "Point the marketplace at $GITHUB_REF_NAME"
+          git push origin main
