@@ -40,7 +40,8 @@ const COMMON = ['Box', 'Text', 'Button', 'Input', 'Select', 'Link', 'Code', 'Mar
 const tableOf = (types: string[]) => Object.fromEntries([...COMMON, ...types].map(type => [type, element(type)]))
 
 const UI = {
-  terminal: tableOf(['Raster', 'Image']) as unknown as Elements['terminal'],
+  // The terminal's table has an Svg too on 2.1.296 (drawn as nothing): Raster decides the surface
+  terminal: tableOf(['Raster', 'Image', 'Svg']) as unknown as Elements['terminal'],
   desktop: tableOf(['Svg']) as unknown as Elements['desktop'],
 }
 
