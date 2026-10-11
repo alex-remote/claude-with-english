@@ -3,11 +3,17 @@ import type { Register } from 'claude-code'
 
 import { DEFAULT_VIEW } from './core/settings/schema'
 import { INITIAL_PANE, NO_PARA } from './core/state/defaults'
+import { segment } from './core/text/segment'
 import { localDate } from './core/time'
 import { createBand } from './features/band/controller'
 import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
+import { notFullscreen, startupToasts } from './features/env/toasts'
 import { bandView, isShown } from './features/band/view'
+import { createReplies, translatable } from './features/reply/controller'
+import type { Replies } from './features/reply/controller'
+import { replyView } from './features/reply/view'
+import type { ReplyPart } from './features/reply/view'
 import { createSpeaker } from './features/speak/controller'
 import type { Speaker } from './features/speak/controller'
 import type { Host } from './host'
@@ -33,10 +39,16 @@ const paraAtom = atom({ plugin: 'work-with-english', key: 'para' } as const, NO_
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
 
+/** How often paragraphs drawn without a translation in $.state are looked up in the cache */
+const CACHE_LOAD_MS = 400
+
 export const register: Register = on => {
   let host: Host | null = null
   let band: Band | null = null
   let speaker: Speaker | null = null
+  let replies: Replies | null = null
+  /** The terminal's layout was seen once (运行环境 › 启动时的提示) */
+  let isLayoutSeen = false
 
   /** The settings into $.state and the band's mirror, as $.store holds them now */
   async function loadSettings(bound: Host) {
@@ -122,6 +134,8 @@ export const register: Register = on => {
     host = bound
     band = createBand(bound)
     speaker = createSpeaker(bound)
+    const repliesOf = createReplies(bound)
+    replies = repliesOf
     await loadSettings(bound).catch(error => bound.ui.debug(`settings: ${String(error)}`))
 
     // After the first prompt can go: the store's backup first, before anything writes to it
@@ -132,7 +146,11 @@ export const register: Register = on => {
         if (outcome === 'restored') {
           await loadSettings(bound)
         }
+        await startupToasts(bound)
       })().catch(error => bound.ui.debug(`store backup: ${String(error)}`))
+    })
+    bound.clock.every(CACHE_LOAD_MS, () => {
+      void repliesOf.loadNoted().catch(error => bound.ui.debug(`reply cache load: ${String(error)}`))
     })
     bound.clock.every(SETTINGS_SYNC_MS, () => {
       void loadSettings(bound).catch(error => bound.ui.debug(`settings sync: ${String(error)}`))
@@ -154,6 +172,7 @@ export const register: Register = on => {
 
   // /clear, /resume and /branch reset $.state and start no session.start
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
+    replies?.forgetLooked()
     if (host) {
       await loadSettings(host).catch(error => host?.ui.debug(`settings: ${String(error)}`))
     }
@@ -177,6 +196,20 @@ export const register: Register = on => {
       return next(e)
     }
     band.markDrawn()
+    if (!isLayoutSeen && e.surface === 'terminal' && e.viewport?.isFullscreen !== undefined) {
+      isLayoutSeen = true
+      const isFullscreen = e.viewport.isFullscreen
+      const bound = host
+      // Not while drawing: the toast and its flag go out from a timer
+      bound?.clock.after(0, () => {
+        void (async () => {
+          await bound.state.env.update(env => ({ ...env, surface: 'terminal', isFullscreen }))
+          if (!isFullscreen) {
+            await notFullscreen(bound)
+          }
+        })().catch(error => bound.ui.debug(`layout: ${String(error)}`))
+      })
+    }
     const vm = { band: await read($, bandAtom), speaking: await read($, speakingAtom) }
     if (!isShown(vm.band)) {
       return next(e)
@@ -192,6 +225,50 @@ export const register: Register = on => {
         }
       },
       sendAnyway: () => void current.sendAnyway().catch(error => host?.ui.debug(`send anyway: ${String(error)}`)),
+    })
+  })
+
+  // F6: the main conversation's reply blocks, as they are kept
+  on('session.append', ($, e, next) => {
+    replies?.onAppend(e)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // F6: a turn's end, or Claude stopping to ask or to show its plan
+  on('turn.complete', ($, e, next) => {
+    replies?.onTurnComplete(e)
+    return next(e)
+  })
+  on('tool.call', { tool: ['AskUserQuestion', 'ExitPlanMode'] }, ($, e, next) => {
+    if (e.agentId === undefined) {
+      replies?.onWait()
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // F6: each paragraph as Claude Code draws it, its translation under it
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    const current = replies
+    const blocks = segment(e.props.text)
+    if (!current || !blocks.some(translatable)) {
+      return next(e)
+    }
+    const parts: ReplyPart[] = []
+    for (const [index, block] of blocks.entries()) {
+      const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
+      if (para.status === 'none' && translatable(block)) {
+        current.note(block.hash)
+      }
+      const drawn = await next({
+        ...e,
+        props: { ...e.props, text: block.text, isFirstOfReply: e.props.isFirstOfReply && index === 0 },
+      })
+      if (drawn) {
+        parts.push({ drawn, block, para, hasButtons: translatable(block) })
+      }
+    }
+    return replyView($.ui.resolve(e), parts, {
+      toggle: block => void current.toggle(block).catch(error => host?.ui.debug(`reply toggle: ${String(error)}`)),
     })
   })
 }

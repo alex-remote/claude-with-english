@@ -5,7 +5,7 @@ import type { WweSettings } from '../../../types'
 import { completeWithClaude } from './claude'
 import { badFormat, cancelled, describe, generic, notImplemented, timedOut } from './errors'
 import type { Described } from './errors'
-import { draftPrompt, parseDraft } from './prompts'
+import { draftPrompt, paraPrompt, parseDraft, parseReplyBlock, replyBlockPrompt } from './prompts'
 import type { Failed, Prompt, Task, TaskKind, TranslateResult, ValueOf } from './types'
 
 // The one way features reach a model: pick the transport the settings name,
@@ -112,6 +112,14 @@ function jobOf(task: Task): Job | null {
   switch (task.kind) {
     case 'draft':
       return { prompt: draftPrompt(task.text), source: task.text, parse: parseDraft }
+    case 'replyBlock':
+      return {
+        prompt: replyBlockPrompt(task.paras),
+        source: task.paras.join('\n\n'),
+        parse: reply => parseReplyBlock(reply, task.paras.length),
+      }
+    case 'para':
+      return { prompt: paraPrompt(task.text), source: task.text, parse: parseDraft }
     default:
       return null
   }
