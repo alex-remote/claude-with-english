@@ -10,6 +10,9 @@ import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
 import { notFullscreen, startupToasts } from './features/env/toasts'
 import { bandView, isShown } from './features/band/view'
+import { PANE_ID, createAnalyses } from './features/analysis/controller'
+import type { Analyses } from './features/analysis/controller'
+import { analysisView } from './features/analysis/view'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
 import { askLines, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
@@ -36,6 +39,7 @@ const bandAtom = atom({ plugin: 'work-with-english', key: 'band' } as const, EMP
 const speakingAtom = atom({ plugin: 'work-with-english', key: 'speaking' } as const, null)
 const paneAtom = atom({ plugin: 'work-with-english', key: 'pane' } as const, INITIAL_PANE)
 const paraAtom = atom({ plugin: 'work-with-english', key: 'para' } as const, NO_PARA)
+const analysisAtom = atom({ plugin: 'work-with-english', key: 'analysis' } as const, null)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -48,6 +52,7 @@ export const register: Register = on => {
   let band: Band | null = null
   let speaker: Speaker | null = null
   let replies: Replies | null = null
+  let analyses: Analyses | null = null
   /** The terminal's layout was seen once (运行环境 › 启动时的提示) */
   let isLayoutSeen = false
 
@@ -130,6 +135,7 @@ export const register: Register = on => {
           get: id => read($, memberOf(paraAtom, { requestId: id })),
           update: (id, fn) => update($, memberOf(paraAtom, { requestId: id }), fn),
         },
+        analysis: { get: () => read($, analysisAtom), update: fn => update($, analysisAtom, fn) },
       },
     }
     host = bound
@@ -137,6 +143,7 @@ export const register: Register = on => {
     speaker = createSpeaker(bound)
     const repliesOf = createReplies(bound)
     replies = repliesOf
+    analyses = createAnalyses(bound, async () => {})
     await loadSettings(bound).catch(error => bound.ui.debug(`settings: ${String(error)}`))
 
     // After the first prompt can go: the store's backup first, before anything writes to it
@@ -309,8 +316,33 @@ export const register: Register = on => {
         parts.push({ drawn, block, para, hasButtons: translatable(block) })
       }
     }
-    return replyView($.ui.resolve(e), parts, {
-      toggle: block => void current.toggle(block).catch(error => host?.ui.debug(`reply toggle: ${String(error)}`)),
-    })
+    return replyView(
+      $.ui.resolve(e),
+      parts,
+      {
+        toggle: block => void current.toggle(block).catch(error => host?.ui.debug(`reply toggle: ${String(error)}`)),
+        speak: block => void speaker?.speak(`para-${block.hash}`, block.text),
+        analyse: block =>
+          void analyses?.analyseText(block.text, false).catch(error => host?.ui.debug(`analyse: ${String(error)}`)),
+      },
+      await read($, speakingAtom),
+    )
+  })
+
+  // The one pane: the settings, or an analysis in their place (阅读辅助 › Pane 只有一个)
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {
+    const pane = await read($, paneAtom)
+    if (pane.view === 'text' || pane.view === 'word') {
+      const analysis = await read($, analysisAtom)
+      const current = analyses
+      if (analysis && current) {
+        return analysisView($.ui.resolve(e), analysis, await read($, speakingAtom), {
+          speak: (key, text) => void speaker?.speak(key, text),
+          openWord: word => void current.analyseHardWord(word).catch(error => host?.ui.debug(`word: ${String(error)}`)),
+          back: () => void current.back().catch(error => host?.ui.debug(`back: ${String(error)}`)),
+        })
+      }
+    }
+    return next(e)
   })
 }

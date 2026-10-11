@@ -1,6 +1,6 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
-import type { WweBand, WweEnv, WwePane, WwePara, WweSettingsView, WweSpeaking } from '../types'
+import type { WweAnalysis, WweBand, WweEnv, WwePane, WwePara, WweSettingsView, WweSpeaking } from '../types'
 
 type E = EngineInterface
 
@@ -109,5 +109,7 @@ export type Host = {
     pane: Cell<WwePane>
     /** F6: a paragraph of Claude's replies, by the hash of its text */
     para: FamilyCell<WwePara>
+    /** F10, F11: what the pane's analysis view shows */
+    analysis: Cell<WweAnalysis | null>
   }
 }

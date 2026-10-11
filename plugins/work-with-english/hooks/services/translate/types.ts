@@ -1,3 +1,5 @@
+import type { WweLookup, WweTextResult, WweWordResult } from '../../../types'
+
 // What the translation service is asked and what it answers, one task kind
 // per feature (docs/dev-plan.md › 服务层). M1 runs `draft`; the others are
 // typed here so the features can be written against them, and run once
@@ -45,41 +47,16 @@ export type TaskKind = Task['kind']
 export type CorrectValue = { corrected: string; zh: string; ok: boolean }
 
 /** F9 */
-export type LookupValue = {
-  lemma: string
-  ipa: string
-  /** Each led by its part of speech: `n. 原因；起因` */
-  senses: string[]
-  /** The sense the sentence uses, an index into `senses`; null when there is no sentence */
-  cur: number | null
-  /** “选中的是 blocks”, or the phrase the word belongs to; null when the selection is the lemma */
-  formNote: string | null
-}
+export type LookupValue = WweLookup
 
 /** An English line and its translation */
 export type Pair = { en: string; zh: string }
 
 /** F10 */
-export type WordValue = LookupValue & {
-  /** 在这句里 */
-  inSentence: string | null
-  /** 原句's translation */
-  sentenceZh: string | null
-  /** 常见用法 */
-  usages: Pair[]
-  /** 例句 */
-  examples: Pair[]
-}
-
-/** F11: one block of a sentence and the part it plays (主语, 谓语, ...) */
-export type SentencePart = { text: string; role: string }
+export type WordValue = WweWordResult
 
 /** F11 */
-export type TextValue = {
-  sentences: { en: string; zh: string; parts: SentencePart[]; points: string[] }[]
-  /** 难词, as lemmas */
-  hard: string[]
-}
+export type TextValue = WweTextResult
 
 /** What each task kind answers. */
 export type ValueOf = {

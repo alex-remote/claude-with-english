@@ -28,6 +28,7 @@ import termios
 import time
 
 import pyte
+from wcwidth import wcwidth
 
 KEYS = {
     'Enter': b'\r',
@@ -163,11 +164,12 @@ class Term:
         return '\n'.join(line.rstrip() for line in self.screen.display)
 
     def find(self, pattern):
-        """(x, y) of the first match of a regex on screen, or None."""
+        """(x, y) of the first match of a regex on screen, or None; x counts display
+        columns, so a match after wide (CJK) characters lands where a click hits it."""
         for y, line in enumerate(self.screen.display):
             m = re.search(pattern, line)
             if m:
-                return m.start(), y
+                return sum(max(wcwidth(ch), 0) for ch in line[: m.start()]), y
         return None
 
     def wait_for(self, pattern, timeout=30.0):

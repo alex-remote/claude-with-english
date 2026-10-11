@@ -134,6 +134,41 @@ export type WwePara = {
   shown: boolean
 }
 
+/** F11: one sentence of an analysis */
+export type WweSentence = { en: string; zh: string; parts: { text: string; role: string }[]; points: string[] }
+
+/** F11: an analysis, as the model gave it */
+export type WweTextResult = { sentences: WweSentence[]; hard: string[] }
+
+/** F9, F10: a word as the dictionary gives it; `cur` is the sense the sentence uses */
+export type WweLookup = { lemma: string; ipa: string; senses: string[]; cur: number | null; formNote: string | null }
+
+/** F10: the word card */
+export type WweWordResult = WweLookup & {
+  inSentence: string | null
+  sentenceZh: string | null
+  usages: { en: string; zh: string }[]
+  examples: { en: string; zh: string }[]
+}
+
+/** F10, F11: what the pane's analysis view shows, while the pane shows one */
+export type WweAnalysis = {
+  kind: 'text' | 'word'
+  status: 'pending' | 'done' | 'failed'
+  /** F11: the paragraph or the sentence analysed; F10: the word as selected */
+  subject: string
+  /** F10: the sentence the word was read in, when known */
+  sentence: string | null
+  /** F11: 这段的难词, or 这句的难词 for a sentence selected in 划选模式 */
+  isSentence: boolean
+  text: WweTextResult | null
+  word: WweWordResult | null
+  /** 解析失败：<原因> */
+  error: string | null
+  /** F10 opened from F11's hard words: ← 返回语法分析 goes back to this, without asking again */
+  back: { subject: string; isSentence: boolean; text: WweTextResult } | null
+}
+
 /** What is being read aloud now (F8), so other speak buttons dim or stop it. */
 export type WweSpeaking = null | { key: string; via: 'system' | 'online' }
 
@@ -146,6 +181,7 @@ declare module 'claude-code' {
       speaking: WweSpeaking
       pane: WwePane
       para: StateFamily<WwePara>
+      analysis: WweAnalysis | null
     }
   }
 }
