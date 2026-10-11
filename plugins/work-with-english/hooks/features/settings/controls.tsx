@@ -1,6 +1,6 @@
 import type { Elements, RenderChildren, RenderElement } from 'claude-code'
 
-import type { WwePane, WweSettings, WweSettingsView, WweTab } from '../../../types'
+import type { WwePane, WweSettings, WweSettingsView, WweSpeaking, WweTab } from '../../../types'
 import { onOff } from '../../core/copy/settings'
 import type { ServiceTab } from '../../core/copy/settings'
 import type { InputKey, SelectKey } from '../../core/settings/save'
@@ -28,20 +28,34 @@ export type ControlKey =
   | 'anki-deck'
   | 'claude-model'
   | 'model-id'
+  | 'openai-url'
+  | 'openai-key'
+  | 'openai-model'
+  | 'openai-model-id'
+  | 'openai-tts-model'
+  | 'eleven-key'
+  | 'eleven-model'
+  | 'speech-service'
+  | 'voice-system'
+  | 'voice-openai'
+  | 'voice-eleven'
 
 /** The settings a switch flips */
 export type SwitchKey = 'strict' | 'autoPlanAsk' | 'ankiSync' | 'weeklyReminder'
 
 /**
  * What other features draw on a settings page, above its settings: the
- * 单词本 page's lists (F12), the 统计 page's figures (F13). register.tsx
+ * 单词本 page's lists and its line on Anki under 同步到 Anki (F12), the 统计
+ * page's figures (F13). register.tsx
  * draws them from their own `$.state` and hands them in.
  */
-export type PaneSlots = { wordbook?: RenderChildren; stats?: RenderChildren }
+export type PaneSlots = { wordbook?: RenderChildren; ankiStatus?: RenderChildren; stats?: RenderChildren }
 
 export type PaneVm = {
   pane: WwePane
   slots: PaneSlots
+  /** What reads aloud now (F8): 试听 can't be pressed while the system voice reads elsewhere */
+  speaking: WweSpeaking
   settings: WweSettingsView
   /** The unit beside 翻译延迟 now; picking another saves nothing until a delay is typed */
   delayUnit: WweSettings['delayUnit']
@@ -73,6 +87,16 @@ export type PaneActions = {
   resetDelay: () => Promise<void>
   /** F5 设为英语 */
   setReplyLanguage: () => Promise<void>
+  /** F7: the 手动填写 checkbox beside 翻译模型 */
+  toggleManual: () => Promise<void>
+  /** F8: 去配置朗读服务, to the OpenAI-compatible tab's 朗读模型 */
+  gotoSpeech: () => Promise<void>
+  /** F8: 试听, or 停止 while it reads online */
+  tryVoice: () => void
+  /** 删除配置 or 清除: shows the confirmation; `confirm` carries it out, `cancel` takes it back */
+  ask: (what: NonNullable<WwePane['confirm']>) => Promise<void>
+  confirm: () => Promise<void>
+  cancel: () => Promise<void>
 }
 
 /** A setting's name with its switch at the right */

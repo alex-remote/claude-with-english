@@ -12,6 +12,15 @@ export const INITIAL_PANE: WwePane = {
   confirm: null,
   rev: 0,
   replyLanguage: null,
+  openaiList: null,
+  elevenList: null,
+  openaiFetch: { status: 'idle', error: null },
+  elevenFetch: { status: 'idle', error: null },
+  keyStale: false,
+  systemVoices: null,
+  trying: null,
+  cache: { status: 'loading', kb: 0 },
+  autoFocus: null,
 }
 
 export const NO_PARA: WwePara = { status: 'none', zh: null, error: null, shown: false }

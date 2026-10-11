@@ -2,6 +2,7 @@ import type { WweSettings, WweSettingsView } from '../../types'
 import { toastText } from '../core/settings/format'
 import { SETTING_KEYS, coerceSetting, storeKeyOf, viewOf } from '../core/settings/schema'
 import type { SettingKey } from '../core/settings/schema'
+import { KEY_STALE_FLAG as KEY_STALE } from '../core/settings/services'
 import type { Host } from '../host'
 
 // The settings in `$.store`, one key each and shared by every session on the
@@ -16,9 +17,6 @@ export async function loadAll(host: Host): Promise<WweSettings> {
   )
   return Object.fromEntries(values) as WweSettings
 }
-
-/** F7: the address moved to another domain and the OpenAI key hasn't been entered again since */
-const KEY_STALE = 'flag/keyStale'
 
 /** Whether the saved OpenAI key is held back from the address (CommitExtra's `keyStale`). */
 export async function isKeyStale(host: Host): Promise<boolean> {

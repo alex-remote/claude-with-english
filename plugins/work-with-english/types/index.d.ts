@@ -115,12 +115,30 @@ export type WwePane = {
   statsRange: 'week' | 'lastWeek' | 'all'
   /** Under a field whose value was refused: how to fix it, by setting key */
   errors: Readonly<Record<string, string>>
-  /** A confirmation in progress (删除配置, 清除), by what it confirms */
-  confirm: string | null
+  /** A confirmation in progress, by what it confirms: 删除配置 of a service, or 清除 of 本机缓存 */
+  confirm: 'delete-openai' | 'delete-elevenlabs' | 'clear-cache' | null
   /** Bumped to redraw a select with a new key after a refused choice, so it shows the saved value again (P24) */
   rev: number
   /** F5, read each time the settings open */
   replyLanguage: WweReplyLanguage | null
+  /** F7: the models the OpenAI-compatible 请求地址 listed last, as `$.store` keeps them (catalog/openai); null before any */
+  openaiList: { ids: string[]; from: string } | null
+  /** F8: ElevenLabs' models that can read aloud and the account's voices (catalog/eleven); null before any */
+  elevenList: { models: { id: string; name: string }[]; voices: { id: string; name: string }[] } | null
+  /** F7 获取模型列表: under way, or failed with the line to show (获取模型列表失败：<原因>) */
+  openaiFetch: { status: 'idle' | 'loading' | 'failed'; error: string | null }
+  /** F8: the same for ElevenLabs' models and voices */
+  elevenFetch: { status: 'idle' | 'loading' | 'failed'; error: string | null }
+  /** F7: the address moved to another domain and the API Key was not entered again since */
+  keyStale: boolean
+  /** F8: the system's English voices (`say -v ?`), read when the 阅读 page first opens; null until then */
+  systemVoices: string[] | null
+  /** F8: 试听 reading now, with the system voice (试听中…) or online (停止); null when not */
+  trying: 'system' | 'online' | null
+  /** F6, F8: 本机缓存, the KB the replies' translations and the online audio take */
+  cache: { status: 'loading' | 'done' | 'failed'; kb: number }
+  /** The field that takes the focus ring once the pane takes the keyboard: 朗读模型 after 去配置朗读服务 */
+  autoFocus: 'openai-tts-model' | null
 }
 
 /** F6: one paragraph of Claude's replies, by the hash of its text */
@@ -228,9 +246,55 @@ export type WweBook = {
   }
 }
 
+/** F13: one day's numbers, every session added in (core/stats/aggregate › StatsRow) */
+export type WweStatsDay = {
+  used: number
+  retyped: number
+  direct: number
+  words: number
+  newWords: number
+  newSents: number
+}
+
+/** F14: what a share-card export is doing, by its button */
+export type WweShareAction = 'post' | 'image' | 'text'
+
+/** F14: the share card, while the pane shows it (features/stats/controller.ts › openShare) */
+export type WweShare = {
+  /** The seven days up to the day it was opened (core/share/card › CardStats) */
+  card: {
+    from: string
+    to: string
+    sent: number
+    ownPct: number
+    delta: number | null
+    words: number
+    newWords: number
+    streak: number
+    /** A level a day for the last 12 weeks, -1 after today */
+    heat: readonly (-1 | 0 | 1 | 2 | 3 | 4)[]
+  }
+  /** 卡片语言 as the card is drawn now */
+  lang: 'en' | 'zh'
+  /** The card as an SVG document with the product icon, for the desktop's preview; null while it is made */
+  svg: string | null
+  /** The export under way: the three buttons can't be pressed meanwhile */
+  busy: WweShareAction | null
+  /** The last export that failed and why, under its button until another starts */
+  error: { action: WweShareAction; reason: string } | null
+}
+
 /** F13, F14: the 统计 page's figures and the share card, while the pane shows them (features/stats, features/share) */
 export type WweStats = {
+  /** loading: the first read has not answered yet; failed: it could not read the files */
   status: 'loading' | 'done' | 'failed'
+  /** The local date the days were read on, YYYY-MM-DD; '' before the first read */
+  today: string
+  /** Every day with numbers, by date; the page's ranges and charts are counted from these */
+  days: Readonly<Record<string, WweStatsDay>>
+  /** With status failed: 读取统计失败：<原因> */
+  error: string | null
+  share: WweShare | null
 }
 
 declare module 'claude-code' {

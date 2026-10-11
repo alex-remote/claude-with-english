@@ -15,8 +15,10 @@ import { PANE_ID, createAnalyses } from './features/analysis/controller'
 import { createSettings } from './features/settings/controller'
 import type { Settings } from './features/settings/controller'
 import { paneUiOf } from './features/settings/controls'
+import type { PaneSlots } from './features/settings/controls'
 import type { Analyses } from './features/analysis/controller'
 import { analysisView } from './features/analysis/view'
+import type { AnalysisSaved } from './features/analysis/view'
 import { createPicker } from './features/pick/controller'
 import type { Picker } from './features/pick/controller'
 import { createReplies, translatable } from './features/reply/controller'
@@ -26,6 +28,9 @@ import { replyView } from './features/reply/view'
 import type { ReplyPart } from './features/reply/view'
 import { createSpeaker } from './features/speak/controller'
 import type { Speaker } from './features/speak/controller'
+import { createWordbook, hasMineButtons, savedKeyOf } from './features/wordbook/controller'
+import type { Wordbook } from './features/wordbook/controller'
+import { ankiLine, bookLists, mineView } from './features/wordbook/view'
 import type { Host } from './host'
 import { refresh } from './services/settings'
 import { backupOrRestore } from './services/storeBackup'
@@ -65,6 +70,7 @@ export const register: Register = on => {
   let analyses: Analyses | null = null
   let settings: Settings | null = null
   let picker: Picker | null = null
+  let wordbook: Wordbook | null = null
   /** F9: each reply's Markdown by the request id it is drawn under, to find a selection's sentence and code */
   const markdownByRequest = new Map<string, string>()
   let lastReadingMode: string | null = null
@@ -171,7 +177,18 @@ export const register: Register = on => {
     speaker = speakerOf
     const repliesOf = createReplies(bound)
     replies = repliesOf
-    const settingsOf = createSettings(bound, { speaker: speakerOf })
+    const wordbookOf = createWordbook(bound)
+    wordbook = wordbookOf
+    const settingsOf = createSettings(bound, {
+      speaker: speakerOf,
+      onTab: tab => {
+        if (tab === 'wordbook') {
+          void wordbookOf.loadPage().catch(error => bound.ui.debug(`word book page: ${String(error)}`))
+        }
+      },
+      // The switch is on the 单词本 page: its line on Anki shows, and what waited goes in
+      onAnkiSyncOn: () => void wordbookOf.loadPage().catch(error => bound.ui.debug(`anki catch up: ${String(error)}`)),
+    })
     settings = settingsOf
     // An analysis taking the pane commits the field being edited first (设置 › 保存)
     analyses = createAnalyses(bound, () => settingsOf.onClose())
@@ -203,6 +220,7 @@ export const register: Register = on => {
     })
     bound.clock.every(CACHE_LOAD_MS, () => {
       void repliesOf.loadNoted().catch(error => bound.ui.debug(`reply cache load: ${String(error)}`))
+      void wordbookOf.loadNoted().catch(error => bound.ui.debug(`word book status: ${String(error)}`))
     })
     bound.clock.every(SETTINGS_SYNC_MS, () => {
       void loadSettings(bound).catch(error => bound.ui.debug(`settings sync: ${String(error)}`))
@@ -420,6 +438,33 @@ export const register: Register = on => {
     )
   })
 
+  // F8, F12: 朗读 and 加入单词本 on an English message you sent
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const book = wordbook
+    const text = e.props.text
+    if (!book || e.props.origin.kind !== 'composer' || !hasMineButtons(text)) {
+      return next(e)
+    }
+    const drawn = await next(e)
+    if (!drawn) {
+      return drawn
+    }
+    const key = savedKeyOf.mine(text)
+    const { status } = await read($, memberOf(savedAtom, { requestId: key }))
+    if (status === 'unknown') {
+      book.noteMine(text)
+    }
+    return mineView(
+      $.ui.resolve(e),
+      drawn,
+      { key, status, speaking: await read($, speakingAtom) },
+      {
+        speak: () => void speaker?.speak(`mine-${key}`, text),
+        add: () => void book.addMine(text).catch(error => host?.ui.debug(`add mine: ${String(error)}`)),
+      },
+    )
+  })
+
   // The one pane: the settings, or an analysis in their place (阅读辅助 › Pane 只有一个)
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {
     const pane = await read($, paneAtom)
@@ -427,16 +472,60 @@ export const register: Register = on => {
       const analysis = await read($, analysisAtom)
       const current = analyses
       if (analysis && current) {
-        return analysisView($.ui.resolve(e), analysis, await read($, speakingAtom), {
-          speak: (key, text) => void speaker?.speak(key, text),
-          openWord: word => void current.analyseHardWord(word).catch(error => host?.ui.debug(`word: ${String(error)}`)),
-          back: () => void current.back().catch(error => host?.ui.debug(`back: ${String(error)}`)),
-        })
+        const book = wordbook
+        // F12: each 加入单词本's state; one not known yet is looked up on the next tick
+        const savedOf = async (key: string, note: () => void) => {
+          const { status } = await read($, memberOf(savedAtom, { requestId: key }))
+          if (status === 'unknown') {
+            note()
+          }
+          return status
+        }
+        const saved: AnalysisSaved = { word: 'unknown', sentences: [] }
+        if (book && analysis.status === 'done' && analysis.word) {
+          const { lemma } = analysis.word
+          saved.word = await savedOf(savedKeyOf.word(lemma, analysis.sentence), () => book.noteWord(lemma, analysis.sentence))
+        }
+        if (book && analysis.status === 'done' && analysis.text) {
+          const sentences: AnalysisSaved['word'][] = []
+          for (const { en } of analysis.text.sentences) {
+            sentences.push(await savedOf(savedKeyOf.sentence(en), () => book.noteSentence(en)))
+          }
+          saved.sentences = sentences
+        }
+        return analysisView(
+          $.ui.resolve(e),
+          analysis,
+          await read($, speakingAtom),
+          {
+            speak: (key, text) => void speaker?.speak(key, text),
+            openWord: word => void current.analyseHardWord(word).catch(error => host?.ui.debug(`word: ${String(error)}`)),
+            back: () => void current.back().catch(error => host?.ui.debug(`back: ${String(error)}`)),
+            addWord: () => void book?.addWord(analysis).catch(error => host?.ui.debug(`add word: ${String(error)}`)),
+            addSentence: index => {
+              const sentence = analysis.text?.sentences[index]
+              if (sentence) {
+                void book?.addSentence(sentence).catch(error => host?.ui.debug(`add sentence: ${String(error)}`))
+              }
+            },
+          },
+          saved,
+        )
       }
     }
     const ui = paneUiOf($.ui.resolve(e))
     if (pane.view === 'settings' && settings && ui) {
-      return settings.view(ui, { pane, settings: await read($, settingsAtom) })
+      const settingsView = await read($, settingsAtom)
+      const slots: PaneSlots = {}
+      const book = wordbook
+      if (pane.tab === 'wordbook' && book) {
+        const vm = { book: await read($, bookAtom), settings: settingsView }
+        slots.wordbook = bookLists(ui, vm, {
+          remove: (kind, key) => void book.remove(kind, key).catch(error => host?.ui.debug(`remove: ${String(error)}`)),
+        })
+        slots.ankiStatus = ankiLine(ui, vm) ?? undefined
+      }
+      return settings.view(ui, { pane, settings: settingsView, slots, speaking: await read($, speakingAtom) })
     }
     return next(e)
   })

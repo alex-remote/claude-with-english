@@ -1,5 +1,6 @@
 import { isHttpUrl } from '../../core/endpoints'
-import { coerceSetting, storeKeyOf } from '../../core/settings/schema'
+import { allowedOf, modelInUse } from '../../core/settings/models'
+import { DEFAULT_SETTINGS, coerceSetting, storeKeyOf } from '../../core/settings/schema'
 import type { SettingKey } from '../../core/settings/schema'
 import type { Host } from '../../host'
 import type { WweSettings } from '../../../types'
@@ -118,6 +119,25 @@ async function readSetting<K extends SettingKey>(host: Host, key: K): Promise<Ww
   return coerceSetting(key, await host.store.get(storeKeyOf(key)))
 }
 
+/**
+ * The Claude Code account's model as the 服务 page shows it (F7): the default
+ * Haiku gives way to the first alias the organization's `availableModels`
+ * allows. Only the default gives way, so the list is read only for it; when
+ * it can't be read, Haiku goes and the engine's refusal says why.
+ */
+async function claudeModelOf(host: Host, saved: string): Promise<string> {
+  if (saved !== DEFAULT_SETTINGS.claudeModel) {
+    return saved
+  }
+  let allowed: readonly string[] | null = null
+  try {
+    allowed = allowedOf((await host.settings.read()).availableModels)
+  } catch {
+    // Read again at the next request
+  }
+  return modelInUse(saved, allowed)
+}
+
 type Job = {
   prompt: Prompt
   /** The text whose length sets the reply's token cap */
@@ -214,7 +234,7 @@ export async function run<T extends Task>(
       }
       send = prompt => completeWithOpenai(host, prompt, { baseUrl, key, model, signal })
     } else {
-      const model = await readSetting(host, 'claudeModel')
+      const model = await claudeModelOf(host, await readSetting(host, 'claudeModel'))
       send = prompt => completeWithClaude(host, prompt, { model, source: job.source, signal })
     }
   } catch (error) {

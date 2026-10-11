@@ -35,8 +35,11 @@ const ctrlA = ($: Engine, text: string) =>
 
 const enter = ($: Engine, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
 
+// Each test loads the whole mod; on a busy machine that alone takes seconds
+const LOADS_THE_MOD = { timeoutMs: 60_000 }
+
 describe('band', () => {
-  test('a pause translates the Chinese typed, and the band shows it with the day tip', async ($, on) => {
+  test('a pause translates the Chinese typed, and the band shows it with the day tip', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -59,7 +62,7 @@ describe('band', () => {
     expect(w.asked[0]?.prompt).toContain('<source>')
   })
 
-  test('Control+A replaces with the translation, a second Control+A empties the Prompt', async ($, on) => {
+  test('Control+A replaces with the translation, a second Control+A empties the Prompt', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -76,7 +79,7 @@ describe('band', () => {
     expect(second).toEqual({ text: '', cursor: 0 })
   })
 
-  test('Control+A before the band caught up holds the key, then puts the translation in', async ($, on) => {
+  test('Control+A before the band caught up holds the key, then puts the translation in', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -91,7 +94,7 @@ describe('band', () => {
     expect(w.filled).toEqual(['Fix the build.'])
   })
 
-  test('strict mode holds back Enter on a Han character, once the band was drawn', async ($, on) => {
+  test('strict mode holds back Enter on a Han character, once the band was drawn', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -120,7 +123,7 @@ describe('band', () => {
     expect(JSON.parse(statsOf() ?? '{}')).toMatchObject({ retyped: 1, direct: 1 })
   })
 
-  test('strict mode off, or a message from elsewhere, goes through untouched', async ($, on) => {
+  test('strict mode off, or a message from elsewhere, goes through untouched', LOADS_THE_MOD, async ($, on) => {
     const w = world(on, { store: { 'settings/strict': false } })
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
     await start($, w)
@@ -131,7 +134,7 @@ describe('band', () => {
     expect(fromTask.drop).toBeUndefined()
   })
 
-  test('仍然发送 lets the next Enter through when the Prompt kept the text', async ($, on) => {
+  test('仍然发送 lets the next Enter through when the Prompt kept the text', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
     w.replies.push('Look at this.')
@@ -146,7 +149,7 @@ describe('band', () => {
     expect((await enter($, '看看这个')).drop).toBeUndefined()
   })
 
-  test('F15: direct English is corrected at a pause, the changed word marked, and Control+A puts it in', async ($, on) => {
+  test('F15: direct English is corrected at a pause, the changed word marked, and Control+A puts it in', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -169,7 +172,7 @@ describe('band', () => {
     expect(await ctrlA($, 'I have fixed the bug yesterday.')).toEqual({ text: 'I fixed the bug yesterday.', cursor: 26 })
   })
 
-  test("F15: nothing to fix shows ✓, no 替换为纠错, and Control+A stays the editor's own", async ($, on) => {
+  test("F15: nothing to fix shows ✓, no 替换为纠错, and Control+A stays the editor's own", LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => (e.key ? { text: e.text, cursor: 0 } : { text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -187,7 +190,7 @@ describe('band', () => {
     expect(await ctrlA($, 'Run the tests.')).toEqual({ text: 'Run the tests.', cursor: 0 })
   })
 
-  test('F4 + F15: English with Chinese in it, held back, turns into the corrected sentence', async ($, on) => {
+  test('F4 + F15: English with Chinese in it, held back, turns into the corrected sentence', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))

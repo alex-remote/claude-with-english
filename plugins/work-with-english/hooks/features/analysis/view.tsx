@@ -16,6 +16,8 @@ import {
   analysing,
 } from '../../core/copy/analysis'
 import { speakButton } from '../../core/copy/band'
+import type { SavedStatus } from '../wordbook/controller'
+import { addControl } from '../wordbook/view'
 
 // The pane's analyses as F10 and F11 draw them: each sentence with its
 // translation, parts and points, then the hard words to open as word cards;
@@ -27,14 +29,25 @@ export type AnalysisActions = {
   speak: (key: string, text: string) => void
   openWord: (word: string) => void
   back: () => void
-  /** F12, from M7: 加入单词本 beside a sentence or a word */
-  addSentence?: (index: number) => void
-  addWord?: () => void
+  /** F12: 加入单词本 beside a sentence or a word */
+  addSentence: (index: number) => void
+  addWord: () => void
 }
+
+/** F12: the state of each 加入单词本, the word card's or each sentence's */
+export type AnalysisSaved = { word: SavedStatus; sentences: readonly SavedStatus[] }
+
+const NOTHING_SAVED: AnalysisSaved = { word: 'unknown', sentences: [] }
 
 const LABEL_WIDTH = 10
 
-export function analysisView(ui: AnalysisUi, analysis: WweAnalysis, speaking: WweSpeaking, actions: AnalysisActions) {
+export function analysisView(
+  ui: AnalysisUi,
+  analysis: WweAnalysis,
+  speaking: WweSpeaking,
+  actions: AnalysisActions,
+  saved: AnalysisSaved = NOTHING_SAVED,
+) {
   const { Box, Text, Button } = ui
   const speakLabel = (key: string) => speakButton(speaking?.key === key ? speaking.via : null)
   const isSpeakDimmed = (key: string) => speaking !== null && speaking.via === 'system' && speaking.key !== key
@@ -86,9 +99,9 @@ export function analysisView(ui: AnalysisUi, analysis: WweAnalysis, speaking: Ww
                 dimColor={isSpeakDimmed(`s-${i}`)}
                 onPress={() => actions.speak(`s-${i}`, sentence.en)}
               />
-              {actions.addSentence && (
-                <Button key={`add-s-${i}`} label="加入单词本" plain onPress={() => actions.addSentence?.(i)} />
-              )}
+              <Box flexShrink={0}>
+                {addControl(ui, `add-s-${i}`, saved.sentences[i] ?? 'unknown', () => actions.addSentence(i))}
+              </Box>
             </Box>
             <Text dimColor>{sentence.zh}</Text>
             {sentence.parts.length > 0 &&
@@ -127,7 +140,7 @@ export function analysisView(ui: AnalysisUi, analysis: WweAnalysis, speaking: Ww
   }
 
   if (analysis.kind === 'word' && analysis.word) {
-    return wordCard(ui, analysis, analysis.word, top, speakLabel, isSpeakDimmed, actions, row)
+    return wordCard(ui, analysis, analysis.word, top, speakLabel, isSpeakDimmed, actions, row, saved.word)
   }
   return <Box />
 }
@@ -141,6 +154,7 @@ function wordCard(
   isSpeakDimmed: (key: string) => boolean,
   actions: AnalysisActions,
   row: (label: string, body: RenderChildren, key: string) => RenderChildren,
+  status: SavedStatus,
 ) {
   const { Box, Text, Button } = ui
   // 本句 first, the other senses lighter (F9 › 标出这句里的意思)
@@ -160,7 +174,7 @@ function wordCard(
             dimColor={isSpeakDimmed('word')}
             onPress={() => actions.speak('word', word.lemma)}
           />
-          {actions.addWord && <Button key="add-word" label="加入单词本" plain onPress={() => actions.addWord?.()} />}
+          <Box flexShrink={0}>{addControl(ui, 'add-word', status, () => actions.addWord())}</Box>
         </Box>
         {word.ipa !== '' && <Text dimColor>{word.ipa}</Text>}
         {word.formNote && <Text dimColor>{word.formNote}</Text>}

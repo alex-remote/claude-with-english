@@ -31,8 +31,11 @@ const message = (text: string) =>
     props: { text, isFirstOfReply: true },
   }) as const
 
+// Each test loads the whole mod; on a busy machine that alone takes seconds
+const LOADS_THE_MOD = { timeoutMs: 60_000 }
+
 describe('reply', () => {
-  test('at the turn end every reply is translated, the last first, each paragraph under itself', async ($, on) => {
+  test('at the turn end every reply is translated, the last first, each paragraph under itself', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('session.append', ($, e, next) => next(e))
     on('turn.complete', () => ({ text: '' }))
@@ -70,7 +73,7 @@ describe('reply', () => {
     expect(JSON.parse(stats ?? '{}').words).toBeGreaterThan(20)
   })
 
-  test('每轮最后 1 条 translates only the last reply; the others wait for 翻译', async ($, on) => {
+  test('每轮最后 1 条 translates only the last reply; the others wait for 翻译', LOADS_THE_MOD, async ($, on) => {
     const w = world(on, { store: { 'settings/autoReply': 'last', 'settings/autoReplyCount': 1 } })
     on('session.append', ($, e, next) => next(e))
     on('turn.complete', () => ({ text: '' }))
@@ -95,7 +98,7 @@ describe('reply', () => {
     expect(w.asked.length).toBe(2)
   })
 
-  test('划选模式 and 关闭 translate nothing on their own', async ($, on) => {
+  test('划选模式 and 关闭 translate nothing on their own', LOADS_THE_MOD, async ($, on) => {
     const w = world(on, { store: { 'settings/readingMode': 'select' } })
     on('session.append', ($, e, next) => next(e))
     on('turn.complete', () => ({ text: '' }))
@@ -106,7 +109,7 @@ describe('reply', () => {
     expect(w.asked.length).toBe(0)
   })
 
-  test('a failure shows 译文暂不可用 under the paragraph', async ($, on) => {
+  test('a failure shows 译文暂不可用 under the paragraph', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('session.append', ($, e, next) => next(e))
     on('turn.complete', () => ({ text: '' }))
@@ -119,7 +122,7 @@ describe('reply', () => {
     expect(await ui.find({ type: 'Text', text: /^译文暂不可用：/ })).toBeDefined()
   })
 
-  test('a paragraph kept on disk shows again after /resume, without asking', async ($, on) => {
+  test('a paragraph kept on disk shows again after /resume, without asking', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('ui.render', ($, e) => ({ type: 'Text', props: {}, children: [String((e.props as { text?: string }).text ?? '')] }))
     const block = segment(REPLY_1)[0]

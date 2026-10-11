@@ -14,7 +14,7 @@ export function wordbookPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
       {vm.slots.wordbook}
       <Box flexDirection="column">
         {switchRow(ui, 'anki-sync', ITEM_NAMES.ankiSync, settings.ankiSync, () => actions.flip('ankiSync'))}
-        {note(ui, DESCRIPTIONS.ankiSync)}
+        {vm.slots.ankiStatus ?? note(ui, DESCRIPTIONS.ankiSync)}
       </Box>
       <Box flexDirection="column">
         {alone(

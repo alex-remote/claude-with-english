@@ -1,6 +1,6 @@
 import type { WweSettings } from '../../../types'
 import type { SettingKey } from '../settings/schema'
-import { savedToast } from './common'
+import { failure, progressInPane, progressInline, savedToast } from './common'
 import { SOURCE_LANG, TARGET_LANG, uiNameOf } from './lang'
 
 // The words of the settings pane: its tabs, each setting's name and
@@ -262,6 +262,94 @@ export const CARD_LANGUAGE_NAMES: Record<WweSettings['cardLanguage'], string> = 
 export const CACHE_CLEAR = '清除'
 export const CACHE_CONFIRM = '确定清除'
 export const CANCEL = '取消'
+
+/** 本机缓存 while `du` measures it, and when it could not */
+export const CACHE_MEASURING = progressInPane('计算')
+export const CACHE_UNKNOWN = '无法计算占用的空间'
+
+/** A size on disk from `du -sk`: 512 KB, 12 MB, 1.5 GB */
+export function sizeText(kb: number): string {
+  if (kb < 1024) {
+    return `${Math.max(0, Math.round(kb))} KB`
+  }
+  const mb = kb / 1024
+  if (mb < 1024) {
+    return `${trimmed(mb)} MB`
+  }
+  return `${trimmed(mb / 1024)} GB`
+}
+
+/** One decimal at most, none when it is 0: 12 MB, 1.5 MB */
+const trimmed = (n: number) => String(n >= 100 ? Math.round(n) : Math.round(n * 10) / 10)
+
+/** F6 › 存多久: the toast after 确定清除, and the one when the files could not be removed */
+export const cacheCleared = (kb: number) => `已清除译文和朗读缓存，释放了 ${sizeText(kb)}。`
+export const CACHE_CLEAR_FAILED = '清除缓存失败，请稍后再试。'
+
+/** F8: 试听 beside 声音, what it says while the system voice reads it, and while an online voice does */
+export const TRYING = progressInline('试听')
+export const STOP = '停止'
+
+/**
+ * SPEECH_SYSTEM_DESCRIPTION as a pane draws it: the sentence ends and
+ * 去配置朗读服务 follows as a button, as TRANSLATE_SERVICE_NOTE does.
+ */
+export const SPEECH_SYSTEM_NOTE = '系统自带的声音，免费、离线可用，但听起来比较机械。想要更自然的声音，可以换成在线语音。'
+
+/** A checkbox, drawn as a button: 手动填写 */
+export const checkboxLabel = (label: string, isChecked: boolean) => `${isChecked ? '☑' : '☐'} ${label}`
+
+/** 翻译模型 before a model is chosen from the list */
+export const PICK_MODEL = '选择模型'
+
+/** Where a list would be, while there is none: nothing to ask with yet, or the fetch gave none */
+export const OPENAI_NEEDS_FIRST = '先填请求地址和 API Key'
+export const ELEVEN_NEEDS_FIRST = '先填 API Key'
+export const NO_LIST = '未获取到模型列表'
+
+/** F7 获取模型列表 and F8's fetch of models and voices, under way (通用状态 › 进行中) */
+export const FETCHING_MODELS = progressInPane('获取模型列表')
+export const FETCHING_ELEVEN = progressInPane('获取模型和声音')
+
+/** A fetch's failure line under the dropdown (通用状态 › 失败); the reason says what to check */
+export const modelsFailed = (reason: string) => `${failure('获取模型列表', reason)}。`
+export const elevenFailed = (reason: string) => `${failure('获取模型和声音', reason)}。`
+
+/** Under the dropdown after a fetch: 共 N 个，来自 <地址> */
+export const modelsFrom = (count: number, from: string) => `共 ${count} 个，来自 ${from}`
+export const elevenFrom = (models: number, voices: number) =>
+  `共 ${models} 个能朗读的模型、${voices} 个声音，来自你的 ElevenLabs 账号`
+
+/** F7: the saved 翻译模型 is not in the list fetched since */
+export const MODEL_GONE_HINT = '已保存的模型不在新获取的列表里，仍按它翻译。'
+
+/** Under ElevenLabs' 朗读模型 */
+export const ELEVEN_MODEL_NOTE =
+  'eleven_multilingual_v2 是 ElevenLabs 的默认模型；eleven_flash_v2_5 更快、更省额度；eleven_v4 表现力最强。声音在“阅读”页选。'
+
+/** F7 › 页面提示 › 配置状态: what the OpenAI-compatible service still lacks */
+export const openaiMissingText = (items: readonly string[]) => `还缺${items.join('、')}。填全后可以在“翻译”页选用。`
+export const OPENAI_READY = '✓ 已配置完成，可以在“翻译”页选用。'
+/** In use: ✓ 使用中，翻译使用 <模型>，朗读使用 <朗读模型> */
+export const inUseText = (translate: string | null, speech: string | null) =>
+  `✓ 使用中，${[translate === null ? null : `翻译使用 ${translate}`, speech === null ? null : `朗读使用 ${speech}`]
+    .filter(part => part !== null)
+    .join('，')}`
+export const ELEVEN_MISSING = '还缺 API Key。填好后会获取你账号里的模型和声音，然后可以在“阅读”页选用。'
+export const ELEVEN_READY = '✓ 已配置完成，可以在“阅读”页选用。'
+export const elevenInUse = (model: string, voice: string) => `✓ 使用中，朗读使用 ${model}，声音 ${voice}`
+
+/** 删除配置, at the foot of the OpenAI-compatible and ElevenLabs tabs */
+export const DELETE_CONFIG = '删除配置'
+export const DELETE_CONFIRM = '确定删除'
+export const DELETE_NOTE = '清掉这个服务的全部配置，包括 API Key。'
+
+/** The toast after 确定删除: what went back to its default with the service */
+export function configDeleted(service: 'openai' | 'elevenlabs', translateBack: boolean, speechBack: boolean): string {
+  const head = service === 'openai' ? '已删除 OpenAI 兼容接口的配置' : '已删除 ElevenLabs 的配置'
+  const back = [translateBack ? '，翻译改回 Claude Code 账号' : '', speechBack ? '，朗读改回系统声音' : '']
+  return `${head}${back.join('')}。`
+}
 
 /** The line under a field whose value failed its check */
 export const ERRORS = {

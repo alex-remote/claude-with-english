@@ -1,7 +1,10 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
+// Each test loads the whole mod; on a busy machine that alone takes seconds
+const LOADS_THE_MOD = { timeoutMs: 60_000 }
+
 describe('register', () => {
-  test('session.start registers /wwe to run mid-turn; /wwe opens the settings and prints nothing', async ($, on) => {
+  test('session.start registers /wwe to run mid-turn; /wwe opens the settings and prints nothing', LOADS_THE_MOD, async ($, on) => {
     const registered: unknown[] = []
     mock.clock(on)
     mock.store(on, {})
@@ -34,7 +37,7 @@ describe('register', () => {
     expect(opened).toMatchObject([{ id: 'wwe', focus: true, closeOnEscape: true }])
   })
 
-  test('a refused /wwe still lets the session start', async ($, on) => {
+  test('a refused /wwe still lets the session start', LOADS_THE_MOD, async ($, on) => {
     const logged: string[] = []
     mock.clock(on)
     on('session.start', () => ({ cwd: '/work' }))
