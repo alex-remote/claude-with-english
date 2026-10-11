@@ -72,6 +72,23 @@ export const REPLY_LANGUAGE_SET = `设为${TARGET_NAME}`
 export const REPLY_LANGUAGE_MATCHES = '与目标语言一致'
 /** F5: 设为英语 saves at once, so it raises a save's toast too: 已保存：回复语言 英语 */
 export const replyLanguageSaved = () => savedToast(REPLY_LANGUAGE_NAME, TARGET_NAME)
+/** F5: the value as it stands, under 回复语言 */
+export const replyLanguageValue = (value: string | null) =>
+  `Claude Code 的 Language 设置：${value ?? REPLY_LANGUAGE_UNSET}`
+
+/** F5: the settings that outrank the user's own, where 设为英语 can't write */
+export type FixedSource = 'project' | 'local' | 'flag' | 'policy'
+
+const FIXED_SOURCE_NAMES: Record<FixedSource, string> = {
+  project: '项目设置',
+  local: '项目的本地设置',
+  flag: '启动参数',
+  policy: '组织设置',
+}
+
+/** F5: in place of 设为英语 when a source above the user's own sets the language */
+export const replyLanguageFixed = (source: FixedSource) =>
+  `回复语言由${FIXED_SOURCE_NAMES[source]}指定，这里不能修改。`
 export const CACHE_NAME = '本机缓存'
 export const SHORTCUTS_NAME = 'Control+A 的用法'
 
@@ -127,10 +144,25 @@ export const SPEECH_SYSTEM_DESCRIPTION: LinkedText = {
 
 export const linkedPlain = (text: LinkedText) => text.before + text.link + text.after
 
+/**
+ * TRANSLATE_SERVICE_DESCRIPTION as a pane draws it: a pane's text can't hold
+ * a button, so the sentence ends and the link follows as a button.
+ */
+export const TRANSLATE_SERVICE_NOTE = '输入时的译文、回复译文、划词翻译和解析都用它。没配置完成的服务不能选。'
+
 /** Marks the default among a control's choices, as "段落模式（默认）" */
 export const DEFAULT_SUFFIX = '（默认）'
 
 export const onOff = (value: boolean) => (value ? '开' : '关')
+
+/** A radio choice: 阅读方式's two modes */
+export const radioLabel = (label: string, isChosen: boolean) => `${isChosen ? '●' : '○'} ${label}`
+
+/** What Enter does in a field of the pane, shown after ⏎ while it has focus */
+export const FIELD_SUBMIT = '保存'
+
+/** The tab bar's link to the plugin's repository: a pane draws no icon, so it is a word */
+export const GITHUB_LABEL = 'GitHub'
 
 export const READING_MODE_LABELS: Record<WweSettings['readingMode'], string> = {
   paragraph: '段落模式',
@@ -177,6 +209,10 @@ export const SERVICE_TAB_LABELS: Record<ServiceTab, string> = {
   elevenlabs: 'ElevenLabs',
 }
 
+/** A service's tab with what it is used for: Claude Code 账号（用于翻译） */
+export const serviceTabLabel = (tab: ServiceTab, use: string | null) =>
+  use === null ? SERVICE_TAB_LABELS[tab] : `${SERVICE_TAB_LABELS[tab]}（${use}）`
+
 /** What a service tab says it is used for; null when it is used for neither */
 export function usedFor(translate: boolean, speech: boolean): string | null {
   if (translate && speech) {
@@ -198,6 +234,11 @@ export const CUSTOM_MODEL_LABEL = '自定义模型 id'
 export const CUSTOM_MODEL_PLACEHOLDER = '如 claude-haiku-4-5-20251001'
 /** After a saved model the list no longer has */
 export const NOT_IN_LIST_SUFFIX = '（列表里没有）'
+/** The id field's label under 自定义模型 id */
+export const CUSTOM_MODEL_FIELD = '模型 id'
+
+/** F7: the organization's list leaves out the default Haiku */
+export const modelReplaced = (model: string) => `组织不允许使用 Haiku，已改用 ${model}。`
 
 export const OPENAI_URL_PLACEHOLDER = 'https://api.openai.com/v1'
 export const OPENAI_MODEL_PLACEHOLDER = '如 gpt-4o-mini'

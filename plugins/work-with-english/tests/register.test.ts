@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 describe('register', () => {
-  test('session.start registers /wwe to run mid-turn, and /wwe prints nothing', async ($, on) => {
+  test('session.start registers /wwe to run mid-turn; /wwe opens the settings and prints nothing', async ($, on) => {
     const registered: unknown[] = []
     mock.clock(on)
     mock.store(on, {})
@@ -9,6 +9,14 @@ describe('register', () => {
     on('command.register', ($, e) => {
       registered.push(e)
       return { value: { command: e.name } }
+    })
+    // /wwe reads the settings and F5's language, then opens the pane
+    const opened: unknown[] = []
+    on('settings.read', () => ({ value: {} }))
+    on('config.list', () => ({ value: [] }))
+    on('ui.open', ($, e) => {
+      opened.push(e)
+      return { value: { isPlaced: true } }
     })
 
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
@@ -23,6 +31,7 @@ describe('register', () => {
       { name: 'wwe', description: '打开 work-with-english 设置', immediate: true },
     ])
     expect(answer).toEqual({})
+    expect(opened).toMatchObject([{ id: 'wwe', focus: true, closeOnEscape: true }])
   })
 
   test('a refused /wwe still lets the session start', async ($, on) => {

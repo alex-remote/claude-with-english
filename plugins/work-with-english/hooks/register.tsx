@@ -9,9 +9,12 @@ import { createBand } from './features/band/controller'
 import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
 import { notFullscreen, startupToasts } from './features/env/toasts'
-import { weeklyReminder } from './features/stats/report'
+import { takeUnseenReport, weeklyReminder } from './features/stats/report'
 import { bandView, isShown } from './features/band/view'
 import { PANE_ID, createAnalyses } from './features/analysis/controller'
+import { createSettings } from './features/settings/controller'
+import type { Settings } from './features/settings/controller'
+import { paneUiOf } from './features/settings/controls'
 import type { Analyses } from './features/analysis/controller'
 import { analysisView } from './features/analysis/view'
 import { createPicker } from './features/pick/controller'
@@ -57,6 +60,7 @@ export const register: Register = on => {
   let speaker: Speaker | null = null
   let replies: Replies | null = null
   let analyses: Analyses | null = null
+  let settings: Settings | null = null
   let picker: Picker | null = null
   /** F9: each reply's Markdown by the request id it is drawn under, to find a selection's sentence and code */
   const markdownByRequest = new Map<string, string>()
@@ -157,7 +161,10 @@ export const register: Register = on => {
     speaker = createSpeaker(bound)
     const repliesOf = createReplies(bound)
     replies = repliesOf
-    analyses = createAnalyses(bound, async () => {})
+    const settingsOf = createSettings(bound)
+    settings = settingsOf
+    // An analysis taking the pane commits the field being edited first (设置 › 保存)
+    analyses = createAnalyses(bound, () => settingsOf.onClose())
     const pickerOf = createPicker(bound, {
       markdownOf: requestId => markdownByRequest.get(requestId),
       replies: () => [...markdownByRequest.values()],
@@ -214,8 +221,29 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // Opens the settings from M2 on; until then it answers so nothing is printed
-  on('command.run', { command: 'wwe' }, async () => ({})).catch(($, e, next) => next(e))
+  // /wwe: the settings, on 统计's last week while a weekly report waits to be seen; nothing printed
+  on('command.run', { command: 'wwe' }, async () => {
+    const bound = host
+    if (bound && settings) {
+      analyses?.cancel()
+      const isReport = await takeUnseenReport(bound).catch(() => false)
+      if (isReport) {
+        await bound.state.pane.update(pane => ({ ...pane, statsRange: 'lastWeek' }))
+      }
+      await settings.open(isReport ? 'stats' : 'translate')
+    }
+    return {}
+  }).catch(($, e, next) => next(e))
+
+  // 设置 › 保存: the ring leaving a field commits it; closing the pane commits them all
+  on('ui.focus', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {
+    void settings?.onFocus(e).catch(error => host?.ui.debug(`settings focus: ${String(error)}`))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+  on('ui.close', { id: PANE_ID }, async ($, e, next) => {
+    void settings?.onClose().catch(error => host?.ui.debug(`settings close: ${String(error)}`))
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // F1 to F3: every edit of the Prompt; Control+A answered here, at once
   on('prompt.edit', async ($, e, next) => (band ? band.onEdit(e, next) : next(e))).catch(($, e, next) => next(e))
@@ -395,6 +423,10 @@ export const register: Register = on => {
           back: () => void current.back().catch(error => host?.ui.debug(`back: ${String(error)}`)),
         })
       }
+    }
+    const ui = paneUiOf($.ui.resolve(e))
+    if (pane.view === 'settings' && settings && ui) {
+      return settings.view(ui, { pane, settings: await read($, settingsAtom) })
     }
     return next(e)
   })
