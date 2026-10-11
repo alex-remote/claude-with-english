@@ -9,6 +9,7 @@ import { createBand } from './features/band/controller'
 import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
 import { notFullscreen, startupToasts } from './features/env/toasts'
+import { weeklyReminder } from './features/stats/report'
 import { bandView, isShown } from './features/band/view'
 import { PANE_ID, createAnalyses } from './features/analysis/controller'
 import type { Analyses } from './features/analysis/controller'
@@ -173,11 +174,14 @@ export const register: Register = on => {
     bound.clock.after(0, () => {
       void (async () => {
         const ms = await bound.clock.now()
-        const outcome = await backupOrRestore(bound, localDate(ms, -new Date(ms).getTimezoneOffset()))
+        const today = localDate(ms, -new Date(ms).getTimezoneOffset())
+        const outcome = await backupOrRestore(bound, today)
         if (outcome === 'restored') {
           await loadSettings(bound)
         }
         await startupToasts(bound)
+        // After the other toasts (F13 › 周报提醒)
+        await weeklyReminder(bound, today)
       })().catch(error => bound.ui.debug(`store backup: ${String(error)}`))
     })
     bound.clock.every(CACHE_LOAD_MS, () => {
