@@ -132,6 +132,22 @@ export function createWordbook(host: Host) {
     }
   }
 
+  /**
+   * The page's line on Anki, from a check just made: 打开单词本页时，以及每次加入时.
+   * Before the page was shown it is left to the page's own check.
+   */
+  async function showLink(link: SyncResult['link']) {
+    if (!isPageLoaded || link === 'off') {
+      return
+    }
+    const ever = await hasEverConnected(host)
+    const anki: Pick<WweBook['anki'], 'link' | 'reason' | 'hasEverConnected'> =
+      typeof link === 'object'
+        ? { link: 'broken', reason: link.broken, hasEverConnected: ever }
+        : { link, reason: null, hasEverConnected: ever }
+    await host.state.book.update(page => ({ ...page, anki: { ...page.anki, ...anki } }))
+  }
+
   /** What was waiting goes into Anki, with a toast that says how much */
   async function catchUp() {
     const done = await syncPending(host, book)
@@ -141,6 +157,7 @@ export function createWordbook(host: Host) {
         await relist()
       }
     }
+    await showLink(done.link)
     return done
   }
 
@@ -190,7 +207,11 @@ export function createWordbook(host: Host) {
     }
     await lookUp(key).catch(debug('status'))
     await afterChange()
-    if (sync !== null && cameBack(sync.link)) {
+    if (sync === null) {
+      return
+    }
+    await showLink(sync.link).catch(debug('anki line'))
+    if (cameBack(sync.link)) {
       await catchUp().catch(debug('catch up'))
     }
   }
@@ -318,12 +339,7 @@ export function createWordbook(host: Host) {
         return
       }
       const link = await connectionStatus(host)
-      const ever = await hasEverConnected(host)
-      const anki: Pick<WweBook['anki'], 'link' | 'reason' | 'hasEverConnected'> =
-        typeof link === 'object'
-          ? { link: 'broken', reason: link.broken, hasEverConnected: ever }
-          : { link, reason: null, hasEverConnected: ever }
-      await host.state.book.update(page => ({ ...page, anki: { ...page.anki, ...anki } }))
+      await showLink(link)
       lastLink = link
       if (link === 'ok') {
         await catchUp()

@@ -141,15 +141,23 @@ export type FakeOptions = {
   anki?: FakeAnki
   store?: Record<string, unknown>
   sayFails?: boolean
+  /** The HTTP status an online voice's server answers curl with (F8); absent, 200 and an mp3 */
+  speechStatus?: number
   /** What the model answers a translation with; null or absent, it fails */
   translation?: string | null
 }
+
+/** One value of a curl config line (`name = "value"`), unquoted */
+const curlValue = (config: string, name: string) =>
+  new RegExp(`^${name} = "((?:[^"\\\\]|\\\\.)*)"$`, 'm').exec(config)?.[1]?.replace(/\\(.)/g, '$1') ?? ''
 
 export function fakeHost(options: FakeOptions = {}) {
   const anki = options.anki ?? fakeAnki()
   const files = new Map<string, string>()
   const store = new Map(Object.entries(options.store ?? {}))
   const runs: string[][] = []
+  /** The configs curl was given on stdin, the Key's header among them */
+  const curls: string[] = []
   const timers: number[] = []
   const asked: string[] = []
   const debug: string[] = []
@@ -178,7 +186,7 @@ export function fakeHost(options: FakeOptions = {}) {
     },
     http: { fetch: anki.fetch },
     proc: {
-      run: async (argv: readonly string[]) => {
+      run: async (argv: readonly string[], init: { stdin?: string } = {}) => {
         runs.push([...argv])
         if (argv[0] === 'rm') {
           files.delete(argv[argv.length - 1] ?? '')
@@ -188,6 +196,25 @@ export function fakeHost(options: FakeOptions = {}) {
             return { ...ok, exitCode: 1, stderr: 'Opening output file failed\n' }
           }
           files.set(argv[argv.indexOf('-o') + 1] ?? '', 'm4a')
+        }
+        // `curl -K -` as the online voice runs it (P05): the request is the config on stdin;
+        // the body goes to `output`, an HTTP error exits 22 (fail-with-body)
+        if (argv[0] === 'curl') {
+          const config = init.stdin ?? ''
+          curls.push(config)
+          const status = options.speechStatus ?? 200
+          const isOk = status < 300
+          files.set(curlValue(config, 'output'), isOk ? 'ID3 audio' : '{"error":{"code":"invalid_api_key"}}')
+          return { ...ok, exitCode: isOk ? 0 : 22, stdout: `${status} ${isOk ? 'audio/mpeg' : 'application/json'}` }
+        }
+        if (argv[0] === 'mv') {
+          const [, , from = '', to = ''] = argv
+          const text = files.get(from)
+          if (text === undefined) {
+            return { ...ok, exitCode: 1, stderr: `mv: ${from}: No such file or directory\n` }
+          }
+          files.delete(from)
+          files.set(to, text)
         }
         return ok
       },
@@ -251,5 +278,5 @@ export function fakeHost(options: FakeOptions = {}) {
     }
     return sum
   }
-  return { host: host as unknown as Host, anki, files, store, runs, timers, asked, debug, clock, counts }
+  return { host: host as unknown as Host, anki, files, store, runs, curls, timers, asked, debug, clock, counts }
 }

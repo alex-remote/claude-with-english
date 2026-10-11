@@ -4,6 +4,7 @@ import type { SentenceSource } from '../../core/copy/wordbook'
 import type { Host } from '../../host'
 import type { WweSettings } from '../../../types'
 import { dataDirOf } from '../datadir'
+import { onlinePieces, synthesize, type SpeechService } from '../speech/online'
 import { AnkiCallError, AnkiOfflineError, ankiCall, ensureSetup, type AnkiConnection } from './client'
 import { AUDIO_FIELD, SENTENCE_MODEL, WORD_MODEL, type AnkiModel } from './models'
 import {
@@ -65,22 +66,34 @@ export type PendingResult = { words: number; sentences: number; link: AnkiConnec
 
 type Outcome = 'synced' | 'pending' | 'offline'
 
-type SyncSettings = { isOn: boolean; deck: string; voice: string }
+/** The 阅读 page's 朗读服务 and 声音, which read the cards too (F8 › 单词本的音频) */
+type CardVoice =
+  | { via: 'system'; voice: string }
+  | { via: 'online'; service: SpeechService; voice: string; model: string }
+
+type SyncSettings = { isOn: boolean; deck: string; voice: CardVoice }
 
 /** Read now: a change in another session applies at the next sync */
 async function setting<K extends SettingKey>(host: Host, key: K): Promise<WweSettings[K]> {
   return coerceSetting(key, await host.store.get(storeKeyOf(key)))
 }
 
+/** Read as 朗读 reads them (features/speak/controller.ts › voiceOf) */
+async function cardVoiceOf(host: Host): Promise<CardVoice> {
+  const service = await setting(host, 'speechService')
+  switch (service) {
+    case 'system':
+      return { via: 'system', voice: await setting(host, 'voiceSystem') }
+    case 'openai':
+      return { via: 'online', service, voice: await setting(host, 'voiceOpenai'), model: await setting(host, 'openaiTtsModel') }
+    case 'elevenlabs':
+      return { via: 'online', service, voice: await setting(host, 'voiceEleven'), model: await setting(host, 'elevenModel') }
+  }
+}
+
 async function syncSettings(host: Host): Promise<SyncSettings> {
-  const [isOn, deck, service, voice] = await Promise.all([
-    setting(host, 'ankiSync'),
-    setting(host, 'ankiDeck'),
-    setting(host, 'speechService'),
-    setting(host, 'voiceSystem'),
-  ])
-  // An online voice's audio is not kept per word yet, so its cards use the system's default voice
-  return { isOn, deck, voice: service === 'system' ? voice : '' }
+  const [isOn, deck, voice] = await Promise.all([setting(host, 'ankiSync'), setting(host, 'ankiDeck'), cardVoiceOf(host)])
+  return { isOn, deck, voice }
 }
 
 // One sync at a time, so an add and syncPending never both make the same card
@@ -97,10 +110,10 @@ export const audioFileOf = (dataDir: string, key: string) => `${dataDir}/anki/${
 type Audio = { path: string; filename: string; fields: string[] }
 
 /**
- * The card's 朗读: `say` into anki/<hash>.m4a, made once per voice and text.
- * Null when it cannot be made; the card is made without it.
+ * The system voice's: `say` into anki/<hash>.m4a, made once per voice and
+ * text. Null when it cannot be made.
  */
-async function cardAudio(host: Host, speech: string, voice: string): Promise<Audio | null> {
+async function systemAudio(host: Host, speech: string, voice: string): Promise<Audio | null> {
   const key = hashParts(['say', voice, speech])
   const dataDir = await dataDirOf(host)
   const dir = `${dataDir}/anki`
@@ -123,6 +136,38 @@ async function cardAudio(host: Host, speech: string, voice: string): Promise<Aud
     return null
   }
   return { path, filename: `wwe-${key}.m4a`, fields: [AUDIO_FIELD] }
+}
+
+/**
+ * An online voice's: the pieces 朗读 reads, each from tts/ when it was read
+ * before (no second charge), else downloaded into it; Anki plays a field's
+ * clips in turn. Empty when any piece fails, never the system voice instead.
+ */
+async function onlineAudio(host: Host, speech: string, voice: Extract<CardVoice, { via: 'online' }>): Promise<Audio[]> {
+  const clips: Audio[] = []
+  for (const text of onlinePieces(speech)) {
+    const made = await synthesize(host, { service: voice.service, text, voice: voice.voice, model: voice.model })
+    if (!made.ok) {
+      host.ui.debug(`anki audio: ${voice.service}: ${made.reason}`)
+      return []
+    }
+    // tts/<hh>/<hash>.<mp3|m4a>: the name says what is read and how, as the system voice's does
+    const name = made.path.slice(made.path.lastIndexOf('/') + 1)
+    clips.push({ path: made.path, filename: `wwe-${name}`, fields: [AUDIO_FIELD] })
+  }
+  return clips
+}
+
+/**
+ * The card's 朗读, read as the 阅读 page reads (F8 › 单词本的音频). Empty
+ * when it cannot be made; the card is made without it (通用状态).
+ */
+async function cardAudio(host: Host, speech: string, voice: CardVoice): Promise<Audio[]> {
+  if (voice.via === 'online') {
+    return onlineAudio(host, speech, voice)
+  }
+  const clip = await systemAudio(host, speech, voice.voice)
+  return clip ? [clip] : []
 }
 
 type NoteInfo = { noteId: number; modelName: string; fields: Record<string, string> }
@@ -154,13 +199,13 @@ async function findNote(host: Host, model: AnkiModel, query: string, noteId: num
   return info?.modelName === model.modelName ? info : null
 }
 
-async function addNote(host: Host, deck: string, model: AnkiModel, fields: Record<string, string>, audio: Audio | null) {
+async function addNote(host: Host, deck: string, model: AnkiModel, fields: Record<string, string>, audio: Audio[]) {
   const note = {
     deckName: deck,
     modelName: model.modelName,
     fields,
     options: { allowDuplicate: false },
-    ...(audio ? { audio: [audio] } : {}),
+    ...(audio.length > 0 ? { audio } : {}),
   }
   return ankiCall<number>(host, 'addNote', { note })
 }

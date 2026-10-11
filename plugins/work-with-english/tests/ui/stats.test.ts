@@ -4,8 +4,10 @@ import type { Elements, Register } from 'claude-code'
 import { SVG_MAX_LENGTH } from '../../hooks/core/share/card'
 import { DEFAULT_VIEW, storeKeyOf } from '../../hooks/core/settings/schema'
 import { INITIAL_PANE } from '../../hooks/core/state/defaults'
+import { reportToast } from '../../hooks/core/copy/stats'
 import { createStatsPage } from '../../hooks/features/stats/controller'
 import type { StatsPage } from '../../hooks/features/stats/controller'
+import { takeUnseenReport, weeklyReminder } from '../../hooks/features/stats/report'
 import { statsSlot } from '../../hooks/features/stats/view'
 import type { Host } from '../../hooks/host'
 import type { WwePane, WweSettingsView, WweStats } from '../../types'
@@ -426,6 +428,61 @@ describe('统计页', () => {
     await Promise.all([first, page.load()])
     expect(fake.state.stats?.days['2026-10-09']).toMatchObject({ direct: 7 })
     expect(fake.store.has(storeKeyOf('weeklyReminder'))).toBe(false)
+  })
+})
+
+/** Messages only in the week of 2026-09-28: the reminder of 2026-10-05 has a report, the next week's has none */
+function oneWeekFiles(): Map<string, string> {
+  const files = new Map<string, string>()
+  for (const date of ['2026-09-28', '2026-09-30', '2026-10-02', '2026-10-04']) {
+    files.set(`${DATA}/stats/${date}/s1.json`, JSON.stringify(row(1, 1, 1)))
+  }
+  return files
+}
+
+// Each start of Claude Code runs weeklyReminder (register.tsx, after the other
+// toasts); each /wwe asks takeUnseenReport whether to open on 统计's last week.
+describe('周报提醒', () => {
+  test('每周第一次启动时提醒一次；/wwe 停在上周一次，之后回到翻译页', SLOW, async () => {
+    const fake = fakeHost(oneWeekFiles())
+    await weeklyReminder(fake.host, '2026-10-05')
+    await weeklyReminder(fake.host, '2026-10-06')
+    expect(fake.toasts).toEqual([reportToast()])
+    expect(await takeUnseenReport(fake.host)).toBe(true)
+    expect(await takeUnseenReport(fake.host)).toBe(false)
+  })
+
+  test('上周一条英文消息都没发：不提醒', SLOW, async () => {
+    const fake = fakeHost(oneWeekFiles())
+    await weeklyReminder(fake.host, '2026-10-12')
+    expect(fake.toasts).toEqual([])
+    expect(await takeUnseenReport(fake.host)).toBe(false)
+  })
+
+  test('提醒过的周报一周没看，下一周不提醒时：/wwe 不再停在统计页的空“上周”', SLOW, async () => {
+    const fake = fakeHost(oneWeekFiles())
+    await weeklyReminder(fake.host, '2026-10-05')
+    // Away the whole week: no /wwe, no English message
+    await weeklyReminder(fake.host, '2026-10-12')
+    expect(fake.toasts).toEqual([reportToast()])
+    expect(await takeUnseenReport(fake.host)).toBe(false)
+  })
+
+  test('下一周关了每周提醒：不提醒，/wwe 也停在翻译页', SLOW, async () => {
+    const fake = fakeHost()
+    await weeklyReminder(fake.host, '2026-10-05')
+    fake.state.settings = { ...DEFAULT_VIEW, weeklyReminder: false }
+    await weeklyReminder(fake.host, '2026-10-12')
+    expect(fake.toasts).toEqual([reportToast()])
+    expect(await takeUnseenReport(fake.host)).toBe(false)
+  })
+
+  test('下一周上周有消息：照常再提醒，/wwe 停在新的上周', SLOW, async () => {
+    const fake = fakeHost()
+    await weeklyReminder(fake.host, '2026-10-05')
+    await weeklyReminder(fake.host, '2026-10-12')
+    expect(fake.toasts).toEqual([reportToast(), reportToast()])
+    expect(await takeUnseenReport(fake.host)).toBe(true)
   })
 })
 

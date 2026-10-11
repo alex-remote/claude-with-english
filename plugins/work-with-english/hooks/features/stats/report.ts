@@ -20,6 +20,8 @@ export async function weeklyReminder(host: Host, today: string): Promise<void> {
     return
   }
   await host.store.set(REPORT_WEEK, week)
+  // A report reminded of in an earlier week is not this week's 上周: /wwe opens on 统计 only after this week's reminder
+  await host.store.delete(REPORT_UNSEEN)
   const lastWeek = sumRange(await loadDays(host), rangeOf('last', today))
   if (!settings.weeklyReminder || lastWeek.sent === 0) {
     return

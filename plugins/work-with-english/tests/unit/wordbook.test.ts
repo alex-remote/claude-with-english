@@ -25,6 +25,7 @@ import { ANKI_TIMEOUT_MS, ANKI_URL, EVER_KEY, MODEL_IDS_KEY } from '../../hooks/
 import { SENTENCE_FIELDS, SENTENCE_MODEL, WORD_FIELDS, WORD_MODEL } from '../../hooks/services/anki/models'
 import { findNotesQuery, sentenceNoteFields, wordNoteFields } from '../../hooks/services/anki/notes'
 import { connectionStatus, syncPending, syncSentence, syncWord } from '../../hooks/services/anki/sync'
+import { onlinePieces, speechHashOf } from '../../hooks/services/speech/online'
 import { DATA, T0, fakeAnki, fakeHost } from '../support/anki'
 import type { FakeAnki, Loose } from '../support/anki'
 
@@ -85,6 +86,18 @@ const MESSAGE = "Can you help me figure out what's causing this error?"
 const wordFile = (lemma: string) => `${DATA}/book/words/${wordFileName(lemma)}.json`
 
 const audioOf = (text: string) => hashParts(['say', '', text])
+
+/** 朗读服务 set to OpenAI 兼容接口 with the voice nova (F8) */
+const OPENAI_VOICE = {
+  'settings/speechService': 'openai',
+  'settings/openaiBaseUrl': 'https://api.example.com/v1',
+  'settings/openaiKey': 'sk-test-abcd1234',
+  'settings/openaiTtsModel': 'gpt-4o-mini-tts',
+  'settings/voiceOpenai': 'nova',
+}
+
+/** An online voice's cached clip (services/speech/online.ts) */
+const ttsFile = (hash: string, ext: string) => `${DATA}/tts/${hash.slice(0, 2)}/${hash}.${ext}`
 
 describe('word book: words', () => {
   test('a word is kept under its base form, with the sentence and the meaning it has there', async () => {
@@ -318,6 +331,63 @@ describe('Anki: cards', () => {
     await addSentence(fake.host, REPLY_SENTENCE)
     await syncSentence(fake.host, book, REPLY_SENTENCE.en)
     expect(fake.runs.find(argv => argv[0] === 'say')?.slice(0, 3)).toEqual(['say', '-v', 'Samantha'])
+  })
+
+  test('an online voice chosen on the 阅读 page reads the card: its service, voice and model, into tts/', async () => {
+    const fake = fakeHost({ store: OPENAI_VOICE })
+    await addWord(fake.host, CAUSE)
+    expect(await syncWord(fake.host, book, 'cause')).toEqual({ isSynced: true, link: 'ok' })
+    expect(fake.runs.some(argv => argv[0] === 'say')).toBe(false)
+    expect(fake.curls).toHaveLength(1)
+    expect(fake.curls[0]).toContain('url = "https://api.example.com/v1/audio/speech"')
+    expect(fake.curls[0]).toContain('\\"voice\\":\\"nova\\"')
+    expect(fake.curls[0]).toContain('\\"model\\":\\"gpt-4o-mini-tts\\"')
+    const hash = speechHashOf({ service: 'openai', model: 'gpt-4o-mini-tts', voice: 'nova', text: 'cause' })
+    const audio = ttsFile(hash, 'mp3')
+    expect(fake.files.has(audio)).toBe(true)
+    const add = fake.anki.state.calls.find(c => c.action === 'addNote')?.params.note
+    expect(add?.audio).toEqual([{ path: audio, filename: `wwe-${hash}.mp3`, fields: ['朗读'] }])
+    expect(fake.anki.notesOf(WORD_MODEL.modelName)[0]?.fields['朗读']).toBe(`[sound:wwe-${hash}.mp3]`)
+  })
+
+  test('what an online voice read before comes from its cache: no second request, no second charge', async () => {
+    const store = { 'settings/speechService': 'elevenlabs', 'settings/elevenKey': 'xi-test-5678efgh', 'settings/voiceEleven': 'v-rachel' }
+    const fake = fakeHost({ store })
+    const hash = speechHashOf({ service: 'elevenlabs', model: 'eleven_multilingual_v2', voice: 'v-rachel', text: REPLY_SENTENCE.en })
+    // 朗读 beside the sentence in the analysis read it once already
+    fake.files.set(ttsFile(hash, 'mp3'), 'ID3 audio')
+    await addSentence(fake.host, REPLY_SENTENCE)
+    expect(await syncSentence(fake.host, book, REPLY_SENTENCE.en)).toEqual({ isSynced: true, link: 'ok' })
+    expect(fake.curls).toHaveLength(0)
+    expect(fake.runs.some(argv => argv[0] === 'say')).toBe(false)
+    const add = fake.anki.state.calls.find(c => c.action === 'addNote')?.params.note
+    expect(add?.audio).toEqual([{ path: ttsFile(hash, 'mp3'), filename: `wwe-${hash}.mp3`, fields: ['朗读'] }])
+  })
+
+  test('a sentence too long for one online clip: one clip per piece 朗读 reads, played in turn', async () => {
+    const fake = fakeHost({ store: OPENAI_VOICE })
+    const long = Array.from({ length: 40 }, (_, i) => `Step ${i + 1} reads the config file and checks every value first.`).join(' ')
+    const pieces = onlinePieces(long)
+    expect(pieces.length).toBeGreaterThan(1)
+    await addSentence(fake.host, { ...REPLY_SENTENCE, en: long })
+    expect(await syncSentence(fake.host, book, long)).toEqual({ isSynced: true, link: 'ok' })
+    const hashes = pieces.map(text => speechHashOf({ service: 'openai', model: 'gpt-4o-mini-tts', voice: 'nova', text }))
+    expect(fake.curls).toHaveLength(pieces.length)
+    const add = fake.anki.state.calls.find(c => c.action === 'addNote')?.params.note
+    expect(add?.audio).toEqual(hashes.map(hash => ({ path: ttsFile(hash, 'mp3'), filename: `wwe-${hash}.mp3`, fields: ['朗读'] })))
+    expect(fake.anki.notesOf(SENTENCE_MODEL.modelName)[0]?.fields['朗读']).toBe(hashes.map(hash => `[sound:wwe-${hash}.mp3]`).join(''))
+  })
+
+  test('an online voice that fails leaves the card without audio; the system voice does not stand in', async () => {
+    const fake = fakeHost({ store: OPENAI_VOICE, speechStatus: 401 })
+    await addWord(fake.host, CAUSE)
+    expect(await syncWord(fake.host, book, 'cause')).toEqual({ isSynced: true, link: 'ok' })
+    expect(fake.curls).toHaveLength(1)
+    expect(fake.runs.some(argv => argv[0] === 'say')).toBe(false)
+    const add = fake.anki.state.calls.find(c => c.action === 'addNote')?.params.note
+    expect(add?.audio).toBeUndefined()
+    expect(fake.anki.notesOf(WORD_MODEL.modelName)[0]?.fields['朗读']).toBe('')
+    expect([...fake.files.keys()].some(path => path.startsWith(`${DATA}/tts/`))).toBe(false)
   })
 
   test('a sentence becomes a sentence card; yours has no structure or points', async () => {

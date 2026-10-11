@@ -195,6 +195,52 @@ describe('单词本页', () => {
     expect(ankiLine(UI, { book: w.book(), settings: { ...DEFAULT_VIEW, ankiSync: false } })).toBe(null)
   })
 
+  test('页开着时 Anki 打开了，再从消息上加入：补上等待的，状态行也变成已连接', async () => {
+    const anki = fakeAnki()
+    anki.state.isOpen = false
+    const w = world({ anki, translation: '你能帮我看看吗？' })
+    await w.wordbook.addWord(CAUSE_CARD)
+    await w.wordbook.loadPage()
+    expect(w.book().anki).toMatchObject({ link: 'offline', hasEverConnected: false, pendingWords: 1 })
+    // The pane stays on 单词本; the hover button is in the conversation (P23)
+    anki.state.isOpen = true
+    await w.wordbook.addMine('Could you take a look?')
+    expect(w.toasts).toContain(wb.syncedToast(1, 0))
+    expect(w.book().anki).toMatchObject({ link: 'ok', reason: null, hasEverConnected: true, pendingWords: 0, pendingSentences: 0 })
+    expect(textOf(ankiLine(UI, { book: w.book(), settings: DEFAULT_VIEW }))).toBe(wb.ankiConnected('work-with-english'))
+  })
+
+  test('页开着时 Anki 关了，再加入：这一条待同步，状态行写未连接和等待的数量', async () => {
+    const w = world({ translation: '你能帮我看看吗？' })
+    await w.wordbook.loadPage()
+    expect(w.book().anki.link).toBe('ok')
+    w.anki.state.isOpen = false
+    await w.wordbook.addMine('Could you take a look?')
+    expect(w.book().sentences[0]?.isSynced).toBe(false)
+    expect(w.book().anki).toMatchObject({ link: 'offline', pendingSentences: 1 })
+    expect(textOf(ankiLine(UI, { book: w.book(), settings: DEFAULT_VIEW }))).toBe(wb.ankiOffline(0, 1))
+  })
+
+  test('页开着时卡片类型被改名，再加入：状态行写明原因', async () => {
+    const w = world()
+    await w.wordbook.loadPage()
+    const model = w.anki.state.models.get('work-with-english 句子')
+    w.anki.state.models.delete('work-with-english 句子')
+    if (model) {
+      w.anki.state.models.set('我的句子', model)
+    }
+    await w.wordbook.addSentence(MOVE)
+    const reason = wb.ankiModelRenamed('work-with-english 句子', '我的句子')
+    expect(w.book().anki).toMatchObject({ link: 'broken', reason })
+    expect(textOf(ankiLine(UI, { book: w.book(), settings: DEFAULT_VIEW }))).toBe(reason)
+  })
+
+  test('单词本页没打开过：加入时不动状态行，等打开时再查', async () => {
+    const w = world()
+    await w.wordbook.addWord(CAUSE_CARD)
+    expect(w.book().anki.link).toBe('unknown')
+  })
+
   test('重新打开同步：把等待的补进 Anki', async () => {
     const w = world({ store: { 'settings/ankiSync': false } })
     await w.wordbook.addWord(CAUSE_CARD)
