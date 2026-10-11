@@ -1,7 +1,8 @@
-import { atom, read, update } from 'claude-code'
+import { atom, memberOf, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import { DEFAULT_VIEW } from './core/settings/schema'
+import { INITIAL_PANE, NO_PARA } from './core/state/defaults'
 import { localDate } from './core/time'
 import { createBand } from './features/band/controller'
 import type { Band } from './features/band/controller'
@@ -26,6 +27,8 @@ const envAtom = atom({ plugin: 'work-with-english', key: 'env' } as const, {
 })
 const bandAtom = atom({ plugin: 'work-with-english', key: 'band' } as const, EMPTY_BAND)
 const speakingAtom = atom({ plugin: 'work-with-english', key: 'speaking' } as const, null)
+const paneAtom = atom({ plugin: 'work-with-english', key: 'pane' } as const, INITIAL_PANE)
+const paraAtom = atom({ plugin: 'work-with-english', key: 'para' } as const, NO_PARA)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -109,6 +112,11 @@ export const register: Register = on => {
         env: { get: () => read($, envAtom), update: fn => update($, envAtom, fn) },
         band: { get: () => read($, bandAtom), update: fn => update($, bandAtom, fn) },
         speaking: { get: () => read($, speakingAtom), update: fn => update($, speakingAtom, fn) },
+        pane: { get: () => read($, paneAtom), update: fn => update($, paneAtom, fn) },
+        para: {
+          get: id => read($, memberOf(paraAtom, { requestId: id })),
+          update: (id, fn) => update($, memberOf(paraAtom, { requestId: id }), fn),
+        },
       },
     }
     host = bound

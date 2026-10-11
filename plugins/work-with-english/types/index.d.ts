@@ -90,6 +90,50 @@ export type WweBand = {
   blocked: null | { hasImage: boolean; serviceDown: boolean; isCleared: boolean; isLetThrough: boolean }
 }
 
+/** The settings pages, in the order of 设置 */
+export type WweTab = 'translate' | 'reading' | 'wordbook' | 'services' | 'shortcuts' | 'stats'
+
+/** F5: Claude Code's `language` as it stands, and the source that set it */
+export type WweReplyLanguage = {
+  /** The merged value; null when nothing sets it */
+  value: string | null
+  /** The source with the highest precedence that sets it */
+  source: 'user' | 'project' | 'local' | 'flag' | 'policy' | null
+}
+
+/**
+ * The one pane: the settings, and from M4 the analyses, which take its place
+ * (阅读辅助 › Pane 只有一个). Drafts of text fields live in the module, so a
+ * redraw never writes over what is being typed (P24).
+ */
+export type WwePane = {
+  view: 'settings' | 'word' | 'text' | 'share'
+  tab: WweTab
+  /** The 服务 page's submenu */
+  svcTab: 'claude' | 'openai' | 'elevenlabs'
+  /** The 统计 page's range */
+  statsRange: 'week' | 'lastWeek' | 'all'
+  /** Under a field whose value was refused: how to fix it, by setting key */
+  errors: Readonly<Record<string, string>>
+  /** A confirmation in progress (删除配置, 清除), by what it confirms */
+  confirm: string | null
+  /** Bumped to redraw a select with a new key after a refused choice, so it shows the saved value again (P24) */
+  rev: number
+  /** F5, read each time the settings open */
+  replyLanguage: WweReplyLanguage | null
+}
+
+/** F6: one paragraph of Claude's replies, by the hash of its text */
+export type WwePara = {
+  status: 'none' | 'pending' | 'done' | 'failed'
+  /** The translation, once it came */
+  zh: string | null
+  /** 译文暂不可用：<原因> */
+  error: string | null
+  /** Shown under the paragraph; 收起译文 hides it without forgetting it */
+  shown: boolean
+}
+
 /** What is being read aloud now (F8), so other speak buttons dim or stop it. */
 export type WweSpeaking = null | { key: string; via: 'system' | 'online' }
 
@@ -100,6 +144,8 @@ declare module 'claude-code' {
       env: WweEnv
       band: WweBand
       speaking: WweSpeaking
+      pane: WwePane
+      para: StateFamily<WwePara>
     }
   }
 }
