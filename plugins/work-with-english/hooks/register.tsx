@@ -31,6 +31,10 @@ import type { Speaker } from './features/speak/controller'
 import { createWordbook, hasMineButtons, savedKeyOf } from './features/wordbook/controller'
 import type { Wordbook } from './features/wordbook/controller'
 import { ankiLine, bookLists, mineView } from './features/wordbook/view'
+import { createStatsPage } from './features/stats/controller'
+import type { StatsPage } from './features/stats/controller'
+import { statsSlot } from './features/stats/view'
+import { shareUiOf, shareView } from './features/share/view'
 import type { Host } from './host'
 import { refresh } from './services/settings'
 import { backupOrRestore } from './services/storeBackup'
@@ -71,6 +75,7 @@ export const register: Register = on => {
   let settings: Settings | null = null
   let picker: Picker | null = null
   let wordbook: Wordbook | null = null
+  let statsPage: StatsPage | null = null
   /** F9: each reply's Markdown by the request id it is drawn under, to find a selection's sentence and code */
   const markdownByRequest = new Map<string, string>()
   let lastReadingMode: string | null = null
@@ -179,11 +184,16 @@ export const register: Register = on => {
     replies = repliesOf
     const wordbookOf = createWordbook(bound)
     wordbook = wordbookOf
+    const statsOf = createStatsPage(bound)
+    statsPage = statsOf
     const settingsOf = createSettings(bound, {
       speaker: speakerOf,
       onTab: tab => {
         if (tab === 'wordbook') {
           void wordbookOf.loadPage().catch(error => bound.ui.debug(`word book page: ${String(error)}`))
+        }
+        if (tab === 'stats') {
+          void statsOf.load().catch(error => bound.ui.debug(`stats page: ${String(error)}`))
         }
       },
       // The switch is on the 单词本 page: its line on Anki shows, and what waited goes in
@@ -513,8 +523,29 @@ export const register: Register = on => {
         )
       }
     }
+    // F14: the share card, a page under 统计
+    if (pane.view === 'share') {
+      const share = (await read($, statsAtom))?.share
+      const shareUi = shareUiOf($.ui.resolve(e))
+      const page = statsPage
+      if (share && shareUi && page) {
+        const log = (what: string) => (error: unknown) => host?.ui.debug(`${what}: ${String(error)}`)
+        return shareView(
+          shareUi,
+          { share },
+          {
+            back: () => void page.back().catch(log('share back')),
+            setCardLanguage: value => void page.setCardLanguage(value).catch(log('card language')),
+            postToX: () => void page.postToX().catch(log('post to X')),
+            copyImage: () => void page.copyImage().catch(log('copy image')),
+            copyText: surface => void page.copyText(surface).catch(log('copy text')),
+          },
+        )
+      }
+    }
     const ui = paneUiOf($.ui.resolve(e))
-    if (pane.view === 'settings' && settings && ui) {
+    // The settings also stand in for a share card whose figures are gone (/clear, a reload)
+    if ((pane.view === 'settings' || pane.view === 'share') && settings && ui) {
       const settingsView = await read($, settingsAtom)
       const slots: PaneSlots = {}
       const book = wordbook
@@ -524,6 +555,18 @@ export const register: Register = on => {
           remove: (kind, key) => void book.remove(kind, key).catch(error => host?.ui.debug(`remove: ${String(error)}`)),
         })
         slots.ankiStatus = ankiLine(ui, vm) ?? undefined
+      }
+      const page = statsPage
+      if (pane.tab === 'stats' && page) {
+        // The whole table: the charts are a Raster in the terminal and an Svg on the desktop
+        slots.stats = statsSlot(
+          $.ui.resolve(e),
+          { stats: await read($, statsAtom), range: pane.statsRange, privacy: false },
+          {
+            setRange: range => void page.setRange(range).catch(error => host?.ui.debug(`stats range: ${String(error)}`)),
+            openShare: () => void page.openShare().catch(error => host?.ui.debug(`open share: ${String(error)}`)),
+          },
+        )
       }
       return settings.view(ui, { pane, settings: settingsView, slots, speaking: await read($, speakingAtom) })
     }

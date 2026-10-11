@@ -1,4 +1,5 @@
 import type { RangeKind } from '../stats/range'
+import { failure, progressInPane } from './common'
 
 // Every word of the 统计 page (F13) and its weekly reminder: the feature
 // map's frame and rules first, then the prototype (the charts' alt text and
@@ -30,6 +31,12 @@ export const dayText = (date: string, withYear = false) => {
 
 /** Under the range buttons: 10月5日至今天, 9月28日至10月4日 (`to` null for today) */
 export const rangeText = (from: string, to: string | null) => `${from}至${to ?? '今天'}`
+
+/** Before the first read of the stats files answers (通用状态 › 进行中) */
+export const loading = () => progressInPane('读取统计')
+
+/** The stats files could not be read; opening the page again tries again (通用状态 › 失败) */
+export const loadFailed = () => failure('读取统计', '无法读取本机的统计文件')
 
 /** No English message was ever sent: the numbers and both charts give way to this */
 export const noData = () => '还没有数据。发出第一条英文消息后开始统计。'

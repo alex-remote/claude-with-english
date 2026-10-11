@@ -1,5 +1,5 @@
 import type { WweSettings } from '../../../types'
-import { savedToast } from './common'
+import { progressInPane, savedToast } from './common'
 import { SOURCE_LANG, TARGET_LANG, uiNameOf, type LangId } from './lang'
 
 // Every word of the share card and the post that goes with it (F14), in the
@@ -155,3 +155,28 @@ export const textCopiedToast = () => '已复制分享文字。'
 
 /** Beside 生成分享卡 when it can't be pressed: the card is always the last seven days */
 export const noMessagesInPastWeek = () => '最近 7 天没有发出英文消息。'
+
+/** The desktop's preview while the card is drawn with its icon */
+export const cardMaking = () => progressInPane('生成卡片')
+
+/** The three exports, by the button that starts them */
+export type ShareAction = 'post' | 'image' | 'text'
+
+/**
+ * In place of a button while its export runs (通用状态 › 进行中). 发到 X
+ * names what the person will see: the plugin never posts.
+ */
+export const exportProgress = (action: ShareAction) =>
+  action === 'post' ? progressInPane('打开发帖页') : progressInPane(action === 'image' ? '复制图片' : '复制文字')
+
+/** Under the button whose export failed; pressing it again tries again (通用状态 › 失败) */
+export const exportFailed = (action: ShareAction, reason: string) =>
+  `${action === 'post' ? '发到 X 失败' : action === 'image' ? '复制图片失败' : '复制文字失败'}：${reason}`
+
+/** Why an export failed, by the step that failed */
+export const EXPORT_REASONS = {
+  png: '无法生成卡片图片',
+  clipboard: '无法写入剪贴板',
+  open: '无法打开浏览器',
+  timeout: '30 秒内没有结果',
+} as const
