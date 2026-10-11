@@ -1,10 +1,12 @@
+import { isHttpUrl } from '../../core/endpoints'
 import { coerceSetting, storeKeyOf } from '../../core/settings/schema'
 import type { SettingKey } from '../../core/settings/schema'
 import type { Host } from '../../host'
 import type { WweSettings } from '../../../types'
 import { completeWithClaude } from './claude'
-import { badFormat, cancelled, describe, generic, notImplemented, timedOut } from './errors'
-import type { Described } from './errors'
+import { badFormat, cancelled, describe, generic, notConfigured, notImplemented, timedOut } from './errors'
+import type { Described, KeyStale } from './errors'
+import { completeWithOpenai } from './openai'
 import {
   correctPrompt,
   draftPrompt,
@@ -22,10 +24,10 @@ import {
   textPrompt,
   wordPrompt,
 } from './prompts'
-import type { Failed, Prompt, Task, TaskKind, TranslateResult, ValueOf } from './types'
+import type { Failed, Prompt, Task, TaskKind, TranslateResult, TransportOutcome, ValueOf } from './types'
 
-// The one way features reach a model: pick the transport the settings name,
-// queue behind the two requests already out, retry a reply that does not
+// The one way features reach a model: pick the transport the settings name
+// (the Claude Code account, or an OpenAI-compatible endpoint), queue behind the two requests already out, retry a reply that does not
 // read once, and put any failure in words.
 
 /** At most this many requests out at once; the rest wait their turn. */
@@ -194,18 +196,30 @@ export async function run<T extends Task>(
     return failed(abortedBy(signal))
   }
   const job = jobOf(task)
+  if (!job) {
+    return failed(notImplemented)
+  }
   let service: WweSettings['translateService']
-  let model: string
+  let send: (prompt: Prompt) => Promise<TransportOutcome | KeyStale>
   try {
     service = await readSetting(host, 'translateService')
-    model = await readSetting(host, 'claudeModel')
+    if (service === 'openai') {
+      const [baseUrl, key, model] = await Promise.all([
+        readSetting(host, 'openaiBaseUrl'),
+        readSetting(host, 'openaiKey'),
+        readSetting(host, 'openaiModel'),
+      ])
+      if (!isHttpUrl(baseUrl) || key === '' || model === '') {
+        return failed(notConfigured)
+      }
+      send = prompt => completeWithOpenai(host, prompt, { baseUrl, key, model, signal })
+    } else {
+      const model = await readSetting(host, 'claudeModel')
+      send = prompt => completeWithClaude(host, prompt, { model, source: job.source, signal })
+    }
   } catch (error) {
     host.ui.debug(`translate ${task.kind}: the settings could not be read: ${String(error)}`)
     return failed(generic)
-  }
-  // The OpenAI-compatible transport arrives in M6
-  if (!job || service !== 'claude') {
-    return failed(notImplemented)
   }
 
   const limiter = limiterOf(host)
@@ -215,7 +229,7 @@ export async function run<T extends Task>(
   try {
     // A reply that is empty or does not parse gets one more try
     for (let attempt = 1; ; attempt += 1) {
-      const outcome = await completeWithClaude(host, job.prompt, { model, source: job.source, signal })
+      const outcome = await send(job.prompt)
       if (outcome.ok) {
         const value = job.parse(outcome.text)
         if (value !== undefined) {

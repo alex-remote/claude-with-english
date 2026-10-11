@@ -310,9 +310,9 @@ describe('failure reasons', () => {
 })
 
 describe('service choice', () => {
-  test('the OpenAI-compatible service is not there before M6, and nothing is sent', async () => {
+  test('the OpenAI-compatible service never reaches the Claude Code account; not configured, nothing is sent', async () => {
     const { host, calls } = fakeHost(() => answered('x'), { 'settings/translateService': 'openai' })
-    expect(await run(host, DRAFT)).toEqual({ ok: false, kind: 'not-implemented', reason: REASONS.notImplemented })
+    expect(await run(host, DRAFT)).toEqual({ ok: false, kind: 'other', reason: REASONS.notConfigured })
     expect(calls).toHaveLength(0)
   })
 })
