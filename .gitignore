@@ -5,5 +5,7 @@ dist/
 tools/probes/
 tools/logs/
 .claude/settings.local.json
+# Worktrees the workflows' fixers worked in
+.claude/worktrees/
 # Written by Claude Code beside the types it lays; local to this machine
 plugins/work-with-english/tsconfig.json
