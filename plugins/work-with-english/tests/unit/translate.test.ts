@@ -315,15 +315,6 @@ describe('service choice', () => {
     expect(await run(host, DRAFT)).toEqual({ ok: false, kind: 'not-implemented', reason: REASONS.notImplemented })
     expect(calls).toHaveLength(0)
   })
-
-  test('a task kind whose prompt is not written yet is not sent', async () => {
-    const { host, calls } = fakeHost(() => answered('x'))
-    expect(await run(host, { kind: 'selection', text: 'The config loader reads PORT first.' })).toMatchObject({
-      ok: false,
-      kind: 'not-implemented',
-    })
-    expect(calls).toHaveLength(0)
-  })
 })
 
 describe('concurrency', () => {

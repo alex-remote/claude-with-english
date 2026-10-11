@@ -5,7 +5,23 @@ import type { WweSettings } from '../../../types'
 import { completeWithClaude } from './claude'
 import { badFormat, cancelled, describe, generic, notImplemented, timedOut } from './errors'
 import type { Described } from './errors'
-import { correctPrompt, draftPrompt, paraPrompt, parseCorrect, parseDraft, parseReplyBlock, replyBlockPrompt } from './prompts'
+import {
+  correctPrompt,
+  draftPrompt,
+  lookupPrompt,
+  myZhPrompt,
+  paraPrompt,
+  parseCorrect,
+  parseDraft,
+  parseLookup,
+  parseReplyBlock,
+  parseText,
+  parseWord,
+  replyBlockPrompt,
+  selectionPrompt,
+  textPrompt,
+  wordPrompt,
+} from './prompts'
 import type { Failed, Prompt, Task, TaskKind, TranslateResult, ValueOf } from './types'
 
 // The one way features reach a model: pick the transport the settings name,
@@ -122,6 +138,27 @@ function jobOf(task: Task): Job | null {
       }
     case 'para':
       return { prompt: paraPrompt(task.text), source: task.text, parse: parseDraft }
+    case 'plan':
+      return { prompt: replyBlockPrompt(task.paras), source: task.paras.join('\n\n'), parse: reply => parseReplyBlock(reply, task.paras.length) }
+    case 'ask':
+      return { prompt: replyBlockPrompt(task.lines), source: task.lines.join('\n'), parse: reply => parseReplyBlock(reply, task.lines.length) }
+    case 'text':
+      return { prompt: textPrompt(task.text), source: task.text.repeat(4), parse: parseText }
+    case 'lookup':
+      return { prompt: lookupPrompt(task.word, task.sentence), source: `${task.word} ${task.sentence ?? ''}`, parse: parseLookup }
+    case 'word':
+      return {
+        prompt: wordPrompt(task.word, task.sentence, task.lookup),
+        source: `${task.word} ${task.sentence ?? ''}`.repeat(3),
+        parse: reply => {
+          const card = parseWord(reply)
+          return card && { ...task.lookup, ...card }
+        },
+      }
+    case 'selection':
+      return { prompt: selectionPrompt(task.text), source: task.text, parse: parseDraft }
+    case 'myZh':
+      return { prompt: myZhPrompt(task.text), source: task.text, parse: parseDraft }
     default:
       return null
   }
