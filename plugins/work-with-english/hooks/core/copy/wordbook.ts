@@ -109,6 +109,23 @@ export const ankiOffline = (pendingWords: number, pendingSentences: number) => {
 export const ankiModelBroken = (modelName: string) =>
   `Anki 里的卡片类型“${modelName}”被修改，已停止同步。删除这个卡片类型后会自动重建。`
 
+// M7 drafts: the two ways a card type breaks, each with a way back that
+// keeps the cards and their reviews (deleting a card type deletes its cards).
+
+/** Our card type now goes by another name in Anki */
+export const ankiModelRenamed = (modelName: string, newName: string) =>
+  `Anki 里的卡片类型“${modelName}”被改名为“${newName}”，已停止同步。改回原名后会继续同步。`
+
+/** Our card type lost fields of ours: “原句”“原句译文” */
+export const ankiModelFieldsMissing = (modelName: string, fields: readonly string[]) =>
+  `Anki 里的卡片类型“${modelName}”缺少字段${fields.map(f => `“${f}”`).join('')}，已停止同步。把字段加回去后会继续同步。`
+
+/** AnkiConnect turned the request down: it asks for an API Key, or does not trust this program */
+export const ANKI_REFUSED = 'AnkiConnect 拒绝了连接，已停止同步。在 AnkiConnect 的设置里去掉 API Key 后会继续同步。'
+
+/** A message of yours whose Chinese could not be translated: 加入单词本失败：<原因> */
+export const addFailedToast = (reason: string) => `${ADD}失败：${reason}`
+
 export type AnkiLink = 'unknown' | 'ok' | 'offline' | 'broken'
 
 /**
@@ -123,6 +140,8 @@ export function ankiStatus(state: {
   pendingSentences: number
   /** The card type that broke, with link 'broken' */
   brokenModel?: string
+  /** With link 'broken', the reason the sync gave (services/anki/client.ts › ensureSetup); it wins over brokenModel */
+  brokenReason?: string
 }): string | null {
   if (!state.isSyncOn || state.link === 'unknown') {
     return null
@@ -131,7 +150,7 @@ export function ankiStatus(state: {
     return ankiConnected(state.deck)
   }
   if (state.link === 'broken') {
-    return ankiModelBroken(state.brokenModel ?? '')
+    return state.brokenReason ?? ankiModelBroken(state.brokenModel ?? '')
   }
   return ankiOffline(state.pendingWords, state.pendingSentences)
 }
