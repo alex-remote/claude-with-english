@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import { DEFAULT_VIEW } from './core/settings/schema'
-import { INITIAL_PANE, NO_PARA } from './core/state/defaults'
+import { EMPTY_BOOK, INITIAL_PANE, NO_PARA, UNKNOWN_SAVED } from './core/state/defaults'
 import { segment } from './core/text/segment'
 import { localDate } from './core/time'
 import { createBand } from './features/band/controller'
@@ -47,6 +47,9 @@ const paneAtom = atom({ plugin: 'work-with-english', key: 'pane' } as const, INI
 const paraAtom = atom({ plugin: 'work-with-english', key: 'para' } as const, NO_PARA)
 const analysisAtom = atom({ plugin: 'work-with-english', key: 'analysis' } as const, null)
 const pickAtom = atom({ plugin: 'work-with-english', key: 'pick' } as const, null)
+const savedAtom = atom({ plugin: 'work-with-english', key: 'saved' } as const, UNKNOWN_SAVED)
+const bookAtom = atom({ plugin: 'work-with-english', key: 'book' } as const, EMPTY_BOOK)
+const statsAtom = atom({ plugin: 'work-with-english', key: 'stats' } as const, null)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -154,14 +157,21 @@ export const register: Register = on => {
         },
         analysis: { get: () => read($, analysisAtom), update: fn => update($, analysisAtom, fn) },
         pick: { get: () => read($, pickAtom), update: fn => update($, pickAtom, fn) },
+        saved: {
+          get: id => read($, memberOf(savedAtom, { requestId: id })),
+          update: (id, fn) => update($, memberOf(savedAtom, { requestId: id }), fn),
+        },
+        book: { get: () => read($, bookAtom), update: fn => update($, bookAtom, fn) },
+        stats: { get: () => read($, statsAtom), update: fn => update($, statsAtom, fn) },
       },
     }
     host = bound
     band = createBand(bound)
-    speaker = createSpeaker(bound)
+    const speakerOf = createSpeaker(bound)
+    speaker = speakerOf
     const repliesOf = createReplies(bound)
     replies = repliesOf
-    const settingsOf = createSettings(bound)
+    const settingsOf = createSettings(bound, { speaker: speakerOf })
     settings = settingsOf
     // An analysis taking the pane commits the field being edited first (设置 › 保存)
     analyses = createAnalyses(bound, () => settingsOf.onClose())

@@ -1,6 +1,18 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
-import type { WweAnalysis, WweBand, WweEnv, WwePane, WwePara, WwePick, WweSettingsView, WweSpeaking } from '../types'
+import type {
+  WweAnalysis,
+  WweBand,
+  WweBook,
+  WweEnv,
+  WwePane,
+  WwePara,
+  WwePick,
+  WweSaved,
+  WweSettingsView,
+  WweSpeaking,
+  WweStats,
+} from '../types'
 
 type E = EngineInterface
 
@@ -116,5 +128,11 @@ export type Host = {
     analysis: Cell<WweAnalysis | null>
     /** F9: the selection line */
     pick: Cell<WwePick | null>
+    /** F12: an entry's 加入单词本 button, by the hash of what it adds */
+    saved: FamilyCell<WweSaved>
+    /** F12: the 单词本 page */
+    book: Cell<WweBook>
+    /** F13, F14: the 统计 page and the share card */
+    stats: Cell<WweStats | null>
   }
 }

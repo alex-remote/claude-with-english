@@ -10,7 +10,8 @@ import type { Commit, InputKey, SelectKey } from '../../core/settings/save'
 import { coerceSetting, viewOf } from '../../core/settings/schema'
 import type { Host } from '../../host'
 import { loadAll, refresh, saveSetting } from '../../services/settings'
-import type { ControlKey, PaneActions, PaneUi, PaneVm, SwitchKey } from './controls'
+import type { Speaker } from '../speak/controller'
+import type { ControlKey, PaneActions, PaneSlots, PaneUi, PaneVm, SwitchKey } from './controls'
 import { readReplyLanguage, setTargetLanguage } from './language'
 import { paneView } from './pane'
 import { MODEL_ALIASES, SERVICE_TABS, allowedOf, isServiceReady, serviceTabOf } from './pages/services'
@@ -69,7 +70,14 @@ const CONFIGURE_TAB: ServiceTab = SERVICE_TABS.includes('openai') ? 'openai' : '
 
 export type Settings = ReturnType<typeof createSettings>
 
-export function createSettings(host: Host) {
+export type SettingsDeps = {
+  /** F8: 试听 on the 阅读 page */
+  speaker?: Speaker
+  /** A page came into view, by /wwe or a tab: the 单词本 and 统计 pages load what they show */
+  onTab?: (tab: WweTab) => void
+}
+
+export function createSettings(host: Host, deps: SettingsDeps = {}) {
   /** What each field holds while edited, by setting */
   const drafts = new Map<InputKey, string>()
   /** The settings whose field shows a red line, as pane.errors does */
@@ -198,6 +206,7 @@ export function createSettings(host: Host) {
     const settings = await host.state.settings.get()
     const sub = tab === 'services' ? { svcTab: svcTab ?? serviceTabOf(settings.translateService) } : {}
     await host.state.pane.update(pane => ({ ...pane, tab, ...sub }))
+    deps.onTab?.(tab)
   }
 
   async function pick(setting: SelectKey, raw: string) {
@@ -350,14 +359,16 @@ export function createSettings(host: Host) {
           replyLanguage,
         }))
         await host.ui.open({ id: PANE_ID, title: PANE_TITLE, focus: true, closeOnEscape: true })
+        deps.onTab?.(tab)
       })
     },
 
     /** The whole pane, from the two `$.state` values the Pane hook reads */
-    view(ui: PaneUi, vm: { pane: WwePane; settings: WweSettingsView }) {
+    view(ui: PaneUi, vm: { pane: WwePane; settings: WweSettingsView; slots?: PaneSlots }) {
       const { pane, settings } = vm
       const model: PaneVm = {
         pane,
+        slots: vm.slots ?? {},
         settings,
         delayUnit: shownUnit ?? settings.delayUnit,
         isCustomModelOpen: isCustomOpen,

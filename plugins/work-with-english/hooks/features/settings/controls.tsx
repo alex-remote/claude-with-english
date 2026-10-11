@@ -1,4 +1,4 @@
-import type { Elements, RenderElement } from 'claude-code'
+import type { Elements, RenderChildren, RenderElement } from 'claude-code'
 
 import type { WwePane, WweSettings, WweSettingsView, WweTab } from '../../../types'
 import { onOff } from '../../core/copy/settings'
@@ -32,8 +32,16 @@ export type ControlKey =
 /** The settings a switch flips */
 export type SwitchKey = 'strict' | 'autoPlanAsk' | 'ankiSync' | 'weeklyReminder'
 
+/**
+ * What other features draw on a settings page, above its settings: the
+ * 单词本 page's lists (F12), the 统计 page's figures (F13). register.tsx
+ * draws them from their own `$.state` and hands them in.
+ */
+export type PaneSlots = { wordbook?: RenderChildren; stats?: RenderChildren }
+
 export type PaneVm = {
   pane: WwePane
+  slots: PaneSlots
   settings: WweSettingsView
   /** The unit beside 翻译延迟 now; picking another saves nothing until a delay is typed */
   delayUnit: WweSettings['delayUnit']

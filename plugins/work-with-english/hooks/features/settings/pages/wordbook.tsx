@@ -2,14 +2,16 @@ import { DESCRIPTIONS, FIELD_SUBMIT, ITEM_NAMES } from '../../../core/copy/setti
 import { alone, errorLine, note, switchRow } from '../controls'
 import type { PaneActions, PaneUi, PaneVm } from '../controls'
 
-// The 单词本 page's settings (F12). The list of words and sentences above
-// them, and the Anki status line, come with M7.
+// The 单词本 page (F12): the lists of words and sentences (features/wordbook
+// draws them into the page's slot), then 同步到 Anki with its status line
+// (in the slot too) and 牌组.
 
 export function wordbookPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   const { Box, Input } = ui
   const { settings } = vm
   return (
     <Box flexDirection="column" rowGap={1}>
+      {vm.slots.wordbook}
       <Box flexDirection="column">
         {switchRow(ui, 'anki-sync', ITEM_NAMES.ankiSync, settings.ankiSync, () => actions.flip('ankiSync'))}
         {note(ui, DESCRIPTIONS.ankiSync)}

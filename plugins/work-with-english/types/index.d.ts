@@ -188,6 +188,51 @@ export type WwePick = {
 /** What is being read aloud now (F8), so other speak buttons dim or stop it. */
 export type WweSpeaking = null | { key: string; via: 'system' | 'online' }
 
+/** F12: what an entry's 加入单词本 button says, by the hash of what it adds (features/wordbook/controller.ts › savedKeyOf) */
+export type WweSaved = {
+  /** unknown: not looked up yet; sentenceMissing: the word is kept, this sentence not (补上这一句) */
+  status: 'unknown' | 'none' | 'added' | 'sentenceMissing' | 'adding'
+}
+
+/** F12: one word on the 单词本 page */
+export type WweBookWord = {
+  lemma: string
+  ipa: string
+  isSynced: boolean
+  /** Oldest first, each with its own 本句释义 */
+  sentences: { en: string; zh: string; form: string; sense: string }[]
+}
+
+/** F12: one sentence on the 单词本 page */
+export type WweBookSentence = {
+  en: string
+  zh: string
+  zhIsTranslation: boolean
+  source: 'mine' | 'reply'
+  isSynced: boolean
+}
+
+/** F12: the 单词本 page's lists, newest first, and where syncing to Anki stands */
+export type WweBook = {
+  status: 'loading' | 'done' | 'failed'
+  words: WweBookWord[]
+  sentences: WweBookSentence[]
+  anki: {
+    /** 'unknown' until this page's check has answered */
+    link: 'unknown' | 'ok' | 'offline' | 'broken'
+    /** With link 'broken': what broke and how to get it back */
+    reason: string | null
+    hasEverConnected: boolean
+    pendingWords: number
+    pendingSentences: number
+  }
+}
+
+/** F13, F14: the 统计 page's figures and the share card, while the pane shows them (features/stats, features/share) */
+export type WweStats = {
+  status: 'loading' | 'done' | 'failed'
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'work-with-english': {
@@ -199,6 +244,9 @@ declare module 'claude-code' {
       para: StateFamily<WwePara>
       analysis: WweAnalysis | null
       pick: WwePick | null
+      saved: StateFamily<WweSaved>
+      book: WweBook
+      stats: WweStats | null
     }
   }
 }
