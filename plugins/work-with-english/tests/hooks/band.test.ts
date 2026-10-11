@@ -670,7 +670,7 @@ describe('band', () => {
     expect(w.filled).toEqual(['I fixed the bug yesterday.'])
   })
 
-  test('F15: pressed twice before a correction with something to fix is in, the Prompt is emptied (F3)', LOADS_THE_MOD, async ($, on) => {
+  test('F15: pressed twice before a correction with something to fix is in, the terminal hands on only the first; one more press empties', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     editor(on)
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
@@ -680,12 +680,44 @@ describe('band', () => {
 
     await type($, '', 'I have fixed the bug yesterday.')
     w.prompt = { text: 'I have fixed the bug yesterday.', cursor: 31 }
-    await ctrlA($, 'I have fixed the bug yesterday.')
-    await ctrlA($, 'I have fixed the bug yesterday.')
+    // The first press takes the caret to the start; the second, the caret already there,
+    // raises no prompt.edit in the terminal (P09, tools/probes/results/term-k1.json)
+    expect(await ctrlA($, 'I have fixed the bug yesterday.')).toEqual({ text: 'I have fixed the bug yesterday.', cursor: 0 })
     await w.clock.advance(2000)
 
     expect(w.asked).toHaveLength(1)
-    expect(w.filled).toEqual([''])
+    expect(w.filled).toEqual(['I fixed the bug yesterday.'])
+    // Put in and not changed since: Control+A empties it (F2, F3)
+    w.prompt = { text: 'I fixed the bug yesterday.', cursor: 26 }
+    expect(await ctrlA($, 'I fixed the bug yesterday.')).toEqual({ text: '', cursor: 0 })
+  })
+
+  test('F15: Control+A on English that changed with no edit of its own (↑, an image) still puts its correction in', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on)
+    editor(on)
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+    w.replies.push(JSON.stringify({ corrected: 'I fixed the bug yesterday.', zh: '我昨天已经修好了这个 bug。', ok: false }))
+    w.replies.push(JSON.stringify({ corrected: 'Why does this test fail? ⟦0⟧', zh: '这个测试为什么失败？⟦0⟧', ok: false }))
+    await start($, w)
+    w.replyMs = 2000
+
+    // ↑ brings back an old message: no prompt.edit (P09)
+    w.prompt = { text: 'I have fixed the bug yesterday.', cursor: 31 }
+    await ctrlA($, 'I have fixed the bug yesterday.')
+    await w.clock.advance(3000)
+    expect(w.asked).toHaveLength(1)
+    expect(w.filled).toEqual(['I fixed the bug yesterday.'])
+
+    // Typed, then an image pasted after it: no prompt.edit for the image (P09)
+    await enter($, 'I fixed the bug yesterday.')
+    await w.clock.settle()
+    w.filled.length = 0
+    await type($, '', 'Why do this test fails?')
+    w.prompt = { text: 'Why do this test fails? [Image #1]', cursor: 34 }
+    await ctrlA($, 'Why do this test fails? [Image #1]')
+    await w.clock.advance(3000)
+    expect(w.asked).toHaveLength(2)
+    expect(w.filled).toEqual(['Why does this test fail? [Image #1]'])
   })
 
   test("F1: the day's tip, once shown, is spent with its message even when the last translation failed", LOADS_THE_MOD, async ($, on) => {

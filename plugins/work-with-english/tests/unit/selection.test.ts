@@ -388,6 +388,12 @@ describe('sentenceCount', () => {
     expect(sentenceCount('Two things stand out:\n\nEvery request waits for the cache lock, so one slow write blocks all reads.')).toBe(2)
   })
 
+  test("a numbered or bulleted step is one sentence: its marker isn't one", () => {
+    expect(sentenceCount('1. Restart the server after you change the port.')).toBe(1)
+    expect(sentenceCount('- Restart the server after you change the port.')).toBe(1)
+    expect(sentenceCount('1. Restart the server.\n2. Run the tests.')).toBe(2)
+  })
+
   test('nothing is no sentence', () => {
     expect(sentenceCount('  \n ')).toBe(0)
   })

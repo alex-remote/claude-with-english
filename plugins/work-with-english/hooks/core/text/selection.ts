@@ -176,7 +176,8 @@ function sentenceSpans(block: string): Array<[number, number]> {
 export function sentenceCount(text: string): number {
   return text
     .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
+    // A list item's marker (1. or -) is no sentence of its own, as in proseBlocks
+    .map((line) => line.replace(/\s+/g, ' ').trim().replace(LIST_ITEM, ''))
     .filter(Boolean)
     .reduce((count, line) => count + sentenceSpans(line).length, 0)
 }

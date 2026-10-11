@@ -313,13 +313,19 @@ export function createBand(
           case 'clearWhenDone':
             draft.pendingCtrlA += 1
             if (!action.isHeld) {
+              // Control+A changes no text: the Prompt as it is now is what the press works on, so
+              // no pause is set after it to ask again and take the press's request's place
+              promptText = e.text
               break
             }
             return { text: e.text, cursor: e.cursor }
           case 'request':
             void catchUpAndPut(e.text, action.mode).catch(error => host.ui.debug(`band Control+A: ${String(error)}`))
-            // Direct English: the caret goes to the start meanwhile, where a ✓ leaves it (F15)
+            // Direct English: the caret goes to the start meanwhile, where a ✓ leaves it (F15).
+            // The text may have changed with no edit of its own (↑, an image, Tab, P09): taken
+            // as it is now, so no pause follows to take the press's request's place
             if (!action.isHeld) {
+              promptText = e.text
               break
             }
             return { text: e.text, cursor: e.cursor }
