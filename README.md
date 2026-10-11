@@ -1,3 +1,5 @@
+<p align="center">简体中文 | <a href="README.en.md">English</a></p>
+
 <p align="center">
   <img src="plugins/work-with-english/assets/icon.png" width="120" alt="claude-with-english">
 </p>
