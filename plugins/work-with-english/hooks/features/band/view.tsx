@@ -48,6 +48,13 @@ export type BandVm = {
   band: WweBand
   speaking: WweSpeaking
   pick: WwePick | null
+  /** 横条按钮 (快捷键和按钮): 替换为译文 and 清空输入框 shown, or Control+A alone */
+  hasButtons: boolean
+  /**
+   * The desktop draws its native buttons taller than a row of text: the rows
+   * with buttons stand a row apart from the text above them
+   */
+  isDesktop: boolean
 }
 
 /**
@@ -209,11 +216,11 @@ export function bandView(ui: BandUi, vm: BandVm, actions: BandActions, below: JS
         <Text dimColor>{band.source}</Text>
       </Box>,
     )
-    if (hasTarget) {
+    if (hasTarget && (vm.hasButtons || band.showTip)) {
       rows.push(
-        <Box key="actions" flexDirection="row" columnGap={2}>
-          {!band.isOk && <Button key="replace" label={useButton(mode)} onPress={() => actions.replace()} />}
-          <Button key="clear" label={clearButton()} onPress={() => actions.clear()} />
+        <Box key="actions" flexDirection="row" columnGap={2} marginTop={vm.isDesktop && vm.hasButtons ? 1 : 0}>
+          {vm.hasButtons && !band.isOk && <Button key="replace" label={useButton(mode)} onPress={() => actions.replace()} />}
+          {vm.hasButtons && <Button key="clear" label={clearButton()} onPress={() => actions.clear()} />}
           {band.showTip && <Text dimColor>{tip()}</Text>}
         </Box>,
       )
@@ -221,7 +228,7 @@ export function bandView(ui: BandUi, vm: BandVm, actions: BandActions, below: JS
   }
   if (band.blocked) {
     rows.push(
-      <Box key="blocked" flexDirection="row" columnGap={2}>
+      <Box key="blocked" flexDirection="row" columnGap={2} marginTop={vm.isDesktop ? 1 : 0}>
         <Box flexGrow={1}>
           <Text color="yellow">{blockedHint(band.blocked)}</Text>
         </Box>

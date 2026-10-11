@@ -1,5 +1,5 @@
 import { DESCRIPTIONS, FIELD_SUBMIT, ITEM_NAMES } from '../../../core/copy/settings'
-import { alone, errorLine, note, switchRow } from '../controls'
+import { GROUP, alone, errorLine, note, switchRow } from '../controls'
 import type { PaneActions, PaneUi, PaneVm } from '../controls'
 
 // The 单词本 page (F12): the lists of words and sentences (features/wordbook
@@ -12,11 +12,11 @@ export function wordbookPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   return (
     <Box flexDirection="column" rowGap={1}>
       {vm.slots.wordbook}
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {switchRow(ui, 'anki-sync', ITEM_NAMES.ankiSync, settings.ankiSync, () => actions.flip('ankiSync'))}
         {vm.slots.ankiStatus ?? note(ui, DESCRIPTIONS.ankiSync)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {alone(
           ui,
           <Input

@@ -22,7 +22,7 @@ import {
 } from '../../../core/copy/settings'
 import { delayFieldText } from '../../../core/settings/format'
 import { DEFAULT_SETTINGS } from '../../../core/settings/schema'
-import { alone, errorLine, note, switchRow } from '../controls'
+import { GROUP, alone, errorLine, note, switchRow } from '../controls'
 import type { PaneActions, PaneUi, PaneVm } from '../controls'
 import { replyLanguageRow } from '../language'
 import { isServiceReady, modelChoice } from './services'
@@ -51,12 +51,12 @@ export function translatePage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   const model = modelChoice(settings.claudeModel, vm.allowedModels, false)
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         <Text bold>{LANGUAGES_NAME}</Text>
         <Text>{LANGUAGES_VALUE}</Text>
         {note(ui, DESCRIPTIONS.languages)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         <Box flexDirection="row" columnGap={1}>
           <Input
             key={vm.key('delay')}
@@ -79,11 +79,11 @@ export function translatePage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         {errorLine(ui, pane.errors.delayMs)}
         {note(ui, DESCRIPTIONS.delay)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {switchRow(ui, 'strict', ITEM_NAMES.strict, settings.strict, () => actions.flip('strict'))}
         {note(ui, DESCRIPTIONS.strict)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         <Text bold>{REPLY_LANGUAGE_NAME}</Text>
         {language !== null && (
           <Box flexDirection="row" columnGap={2} flexWrap="wrap">
@@ -97,7 +97,7 @@ export function translatePage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         {row?.kind === 'fixed' && <Text color="yellow">{replyLanguageFixed(row.source)}</Text>}
         {note(ui, DESCRIPTIONS.replyLanguage)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {alone(
           ui,
           <Select

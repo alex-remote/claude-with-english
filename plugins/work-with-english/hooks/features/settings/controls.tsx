@@ -41,7 +41,7 @@ export type ControlKey =
   | 'voice-eleven'
 
 /** The settings a switch flips */
-export type SwitchKey = 'strict' | 'autoPlanAsk' | 'ankiSync' | 'weeklyReminder'
+export type SwitchKey = 'strict' | 'bandButtons' | 'autoPlanAsk' | 'ankiSync' | 'weeklyReminder'
 
 /**
  * What other features draw on a settings page, above its settings: the
@@ -99,13 +99,23 @@ export type PaneActions = {
   cancel: () => Promise<void>
 }
 
+/** The warm line the prototype draws a chosen card in, readable on a light and a dark background */
+export const ACCENT = '#C8915F'
+
+/** One setting, or a few that go together, in a card with a round border, as the prototype sets each apart */
+export const GROUP = { flexDirection: 'column', borderStyle: 'round', borderDimColor: true, paddingX: 1 } as const
+
+/** The tab, sub-tab or choice showing now as the main button; the others as plain dim labels */
+export const tabStyle = (isCurrent: boolean) =>
+  isCurrent ? ({ variant: 'primary' } as const) : ({ plain: true, dimColor: true } as const)
+
 /** A setting's name with its switch at the right */
 export function switchRow(ui: PaneUi, key: string, name: string, isOn: boolean, onPress: () => unknown) {
   const { Box, Text, Button } = ui
   return (
     <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
       <Text bold>{name}</Text>
-      <Button key={key} label={onOff(isOn)} plain onPress={onPress} />
+      <Button key={key} label={onOff(isOn)} variant={isOn ? 'primary' : 'secondary'} onPress={onPress} />
     </Box>
   )
 }

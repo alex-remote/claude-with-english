@@ -82,6 +82,39 @@ describe('band', () => {
     expect(w.asked[0]?.prompt).toContain('<source>')
   })
 
+  test('横条按钮 off: no 替换为译文 or 清空输入框 on the band, the day tip still there; on the desktop the buttons stand a row apart', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on, { store: { 'settings/bandButtons': false } })
+    on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+    w.replies.push('Look at this.')
+    await start($, w)
+
+    await type($, '', '看看这个')
+    await w.clock.advance(700)
+    await w.clock.settle()
+
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect(await ui.find({ type: 'Text', text: 'Look at this.' })).toBeDefined()
+      expect(await ui.find({ key: 'replace' })).toBeUndefined()
+      expect(await ui.find({ key: 'clear' })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /^小技巧/ })).toBeDefined()
+      await ui.unmount()
+    }
+
+    // Turned back on in another session: the next drawing has them, a row below the text on the desktop
+    w.store.set('settings/bandButtons', true)
+    await w.clock.advance(5000)
+    await w.clock.settle()
+    const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await desktop.find({ key: 'replace' })).toBeDefined()
+    expect((await desktop.find({ key: 'actions' }))?.props.marginTop).toBe(1)
+    await desktop.unmount()
+    const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect((await terminal.find({ key: 'actions' }))?.props.marginTop).toBe(0)
+    await terminal.unmount()
+  })
+
   test('Control+A replaces with the translation, a second Control+A empties the Prompt', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))

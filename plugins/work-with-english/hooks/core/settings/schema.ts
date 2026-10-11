@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: WweSettings = {
   delayMs: 700,
   delayUnit: 'ms',
   strict: true,
+  bandButtons: true,
   translateService: 'claude',
   readingMode: 'paragraph',
   autoReply: 'all',

@@ -39,6 +39,7 @@ export const ITEM_NAMES: Record<SettingKey, string> = {
   delayMs: '翻译延迟',
   delayUnit: '翻译延迟',
   strict: '严格模式',
+  bandButtons: '横条按钮',
   translateService: '翻译服务',
   readingMode: '阅读方式',
   autoReply: '自动翻译回复',
@@ -97,6 +98,8 @@ export const DESCRIPTIONS = {
   languages:
     '箭头左边是源语言，也就是你的母语，在 Prompt 里输入的语言，也是界面和译文用的语言；右边是目标语言，想练习的语言，横条里显示的语言。',
   delay: '停止输入多久后开始翻译。范围 100 ms 到 5 s，改过后可以恢复默认。',
+  bandButtons:
+    '在横条上显示“替换为译文”（直接写英文时是“替换为纠错”）和“清空输入框”。熟悉 Control+A 后可以关掉：按 Control+A 替换，按住 Control 连按两下 A 清空。',
   strict: `防止 AI 对话上下文混入${SOURCE_NAME}，始终使用${TARGET_NAME}。关闭后可直接发送。`,
   replyLanguage:
     'Claude 按这个设置回复。这是 Claude Code 的全局设置，对所有会话立即生效，关闭本插件后仍会保留；语音输入和会话标题的语言也会随之改变。',

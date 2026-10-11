@@ -48,7 +48,7 @@ import type { ServiceTab } from '../../../core/copy/settings'
 import { MODEL_ALIASES, modelChoice } from '../../../core/settings/models'
 import { DEFAULT_SETTINGS } from '../../../core/settings/schema'
 import { isSpeechReady, isTranslateReady, openaiMissing } from '../../../core/settings/services'
-import { alone, errorLine, note } from '../controls'
+import { GROUP, alone, errorLine, note, tabStyle } from '../controls'
 import type { PaneActions, PaneUi, PaneVm } from '../controls'
 
 // The 服务 page (F7, F8): a sub-menu with one tab per service, each tab
@@ -98,7 +98,7 @@ function claudeTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   const { settings } = vm
   const choice = modelChoice(settings.claudeModel, vm.allowedModels, vm.isCustomModelOpen)
   return (
-    <Box flexDirection="column">
+    <Box {...GROUP}>
       {alone(
         ui,
         <Select
@@ -210,7 +210,7 @@ function openaiTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   return (
     <Box flexDirection="column" rowGap={1}>
       {statusLine(ui, status.text, status.isDone)}
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {alone(
           ui,
           <Input
@@ -226,7 +226,7 @@ function openaiTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         {errorLine(ui, pane.errors.openaiBaseUrl)}
         {note(ui, DESCRIPTIONS.openaiBaseUrl)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {alone(
           ui,
           <Input
@@ -242,7 +242,7 @@ function openaiTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         {pane.keyStale && <Text color="yellow">{KEY_STALE_HINT}</Text>}
         {note(ui, DESCRIPTIONS.openaiKey)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         <Box flexDirection="row" columnGap={2} flexWrap="wrap">
           {openaiModelRow(ui, vm, actions)}
           <Button
@@ -261,7 +261,7 @@ function openaiTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         )}
         {note(ui, DESCRIPTIONS.openaiModel)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {alone(
           ui,
           <Input
@@ -334,7 +334,7 @@ function elevenTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   return (
     <Box flexDirection="column" rowGap={1}>
       {status !== null && statusLine(ui, status.text, status.isDone)}
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {alone(
           ui,
           <Input
@@ -349,7 +349,7 @@ function elevenTab(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         )}
         {note(ui, DESCRIPTIONS.elevenKey)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {model}
         {hasKey && fetch.status === 'failed' && fetch.error !== null && <Text color="red">{fetch.error}</Text>}
         {hasKey && fetch.status === 'idle' && list === null && <Text dimColor>{NO_LIST}</Text>}
@@ -375,8 +375,7 @@ export function servicesPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
           <Button
             key={`svc-${tab}`}
             label={serviceTabLabel(tab, usedFor(settings.translateService === tab, settings.speechService === tab))}
-            plain
-            dimColor={tab !== current}
+            {...tabStyle(tab === current)}
             onPress={() => actions.serviceTab(tab)}
           />
         ))}

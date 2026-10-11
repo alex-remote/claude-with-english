@@ -1,6 +1,6 @@
 import { DESCRIPTIONS, ITEM_NAMES } from '../../../core/copy/settings'
 import { privacyNote } from '../../../core/copy/stats'
-import { note, switchRow } from '../controls'
+import { GROUP, note, switchRow } from '../controls'
 import type { PaneActions, PaneUi, PaneVm } from '../controls'
 
 // The 统计 page (F13): the figures, the two charts and 生成分享卡 (features/
@@ -12,7 +12,7 @@ export function statsPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
   return (
     <Box flexDirection="column" rowGap={1}>
       {vm.slots.stats}
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {switchRow(ui, 'weekly-reminder', ITEM_NAMES.weeklyReminder, vm.settings.weeklyReminder, () =>
           actions.flip('weeklyReminder'),
         )}

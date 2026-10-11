@@ -31,7 +31,7 @@ import {
 } from '../../../core/copy/settings'
 import { DEFAULT_SETTINGS } from '../../../core/settings/schema'
 import { OPENAI_VOICES, isSpeechReady } from '../../../core/settings/services'
-import { alone, errorLine, note, switchRow } from '../controls'
+import { ACCENT, GROUP, alone, errorLine, note, switchRow } from '../controls'
 import type { ControlKey, PaneActions, PaneUi, PaneVm } from '../controls'
 
 // The 阅读 page (F6, F8, F9): 阅读方式 with 自动翻译回复 under the paragraph
@@ -136,7 +136,7 @@ function speechSection(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
     )
   }
   return (
-    <Box flexDirection="column">
+    <Box {...GROUP}>
       {alone(
         ui,
         <Select
@@ -191,7 +191,7 @@ function cacheSection(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
     buttons = <Button key="cache-clear" label={CACHE_CLEAR} onPress={() => actions.ask('clear-cache')} />
   }
   return (
-    <Box flexDirection="column">
+    <Box {...GROUP}>
       <Box flexDirection="row" columnGap={2} flexWrap="wrap">
         <Text bold>{CACHE_NAME}</Text>
         {size}
@@ -215,44 +215,53 @@ export function readingPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
       onPress={() => actions.pick('readingMode', value)}
     />
   )
+  // Each reading mode a card of its own, the chosen one in the accent, as the prototype draws them
+  const modeCard = (value: WweSettings['readingMode']) =>
+    settings.readingMode === value
+      ? ({ flexDirection: 'column', borderStyle: 'round', borderColor: ACCENT, paddingX: 1 } as const)
+      : ({ flexDirection: 'column', borderStyle: 'round', borderDimColor: true, paddingX: 1 } as const)
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Box flexDirection="column">
+      <Box {...GROUP} rowGap={1}>
         <Text bold>{ITEM_NAMES.readingMode}</Text>
-        {alone(ui, mode('paragraph', true))}
-        <Box flexDirection="column" paddingLeft={2}>
-          {note(ui, DESCRIPTIONS.paragraphMode)}
-          {isParagraph && (
-            <Box flexDirection="column" paddingLeft={2}>
-              <Box flexDirection="row" columnGap={1}>
-                <Select
-                  key={vm.key('auto-reply')}
-                  label={ITEM_NAMES.autoReply}
-                  value={settings.autoReply}
-                  options={autoReplyOptions}
-                  onSelect={value => actions.pick('autoReply', value)}
-                />
-                {isLast && (
-                  <Input
-                    key={vm.key('reply-count')}
-                    value={vm.fieldText('autoReplyCount', String(settings.autoReplyCount))}
-                    submitLabel={FIELD_SUBMIT}
-                    onInput={text => actions.edit('autoReplyCount', text)}
-                    onSubmit={text => actions.submit('autoReplyCount', text)}
+        <Box key="mode-paragraph" {...modeCard('paragraph')}>
+          {alone(ui, mode('paragraph', true))}
+          <Box flexDirection="column" paddingLeft={2}>
+            {note(ui, DESCRIPTIONS.paragraphMode)}
+            {isParagraph && (
+              <Box flexDirection="column" paddingLeft={2}>
+                <Box flexDirection="row" columnGap={1}>
+                  <Select
+                    key={vm.key('auto-reply')}
+                    label={ITEM_NAMES.autoReply}
+                    value={settings.autoReply}
+                    options={autoReplyOptions}
+                    onSelect={value => actions.pick('autoReply', value)}
                   />
-                )}
-                {isLast && <Text>{REPLY_COUNT_UNIT}</Text>}
+                  {isLast && (
+                    <Input
+                      key={vm.key('reply-count')}
+                      value={vm.fieldText('autoReplyCount', String(settings.autoReplyCount))}
+                      submitLabel={FIELD_SUBMIT}
+                      onInput={text => actions.edit('autoReplyCount', text)}
+                      onSubmit={text => actions.submit('autoReplyCount', text)}
+                    />
+                  )}
+                  {isLast && <Text>{REPLY_COUNT_UNIT}</Text>}
+                </Box>
+                {errorLine(ui, vm.pane.errors.autoReplyCount)}
+                {note(ui, DESCRIPTIONS.autoReply)}
               </Box>
-              {errorLine(ui, vm.pane.errors.autoReplyCount)}
-              {note(ui, DESCRIPTIONS.autoReply)}
-            </Box>
-          )}
+            )}
+          </Box>
         </Box>
-        {alone(ui, mode('select', false))}
-        <Box paddingLeft={2}>{note(ui, DESCRIPTIONS.selectMode)}</Box>
+        <Box key="mode-select" {...modeCard('select')}>
+          {alone(ui, mode('select', false))}
+          <Box paddingLeft={2}>{note(ui, DESCRIPTIONS.selectMode)}</Box>
+        </Box>
         {note(ui, DESCRIPTIONS.readingMode)}
       </Box>
-      <Box flexDirection="column">
+      <Box {...GROUP}>
         {switchRow(ui, 'auto-plan-ask', ITEM_NAMES.autoPlanAsk, settings.autoPlanAsk, () => actions.flip('autoPlanAsk'))}
         {note(ui, DESCRIPTIONS.autoPlanAsk)}
       </Box>

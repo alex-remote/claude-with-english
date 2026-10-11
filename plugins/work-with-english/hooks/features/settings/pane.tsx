@@ -1,5 +1,6 @@
 import type { WweTab } from '../../../types'
 import { GITHUB_LABEL, PANE_TITLE, SETTINGS_TABS, TAB_LABELS } from '../../core/copy/settings'
+import { tabStyle } from './controls'
 import type { PaneActions, PaneUi, PaneVm } from './controls'
 import { readingPage } from './pages/reading'
 import { servicesPage } from './pages/services'
@@ -22,7 +23,7 @@ function pageOf(tab: WweTab, ui: PaneUi, vm: PaneVm, actions: PaneActions) {
     case 'services':
       return servicesPage(ui, vm, actions)
     case 'shortcuts':
-      return shortcutsPage(ui)
+      return shortcutsPage(ui, vm, actions)
     case 'stats':
       return statsPage(ui, vm, actions)
   }
@@ -36,13 +37,7 @@ export function paneView(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
       <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
         <Box flexDirection="row" columnGap={2} flexWrap="wrap">
           {SETTINGS_TABS.map(tab => (
-            <Button
-              key={`tab-${tab}`}
-              label={TAB_LABELS[tab]}
-              plain
-              dimColor={tab !== vm.pane.tab}
-              onPress={() => actions.tab(tab)}
-            />
+            <Button key={`tab-${tab}`} label={TAB_LABELS[tab]} {...tabStyle(tab === vm.pane.tab)} onPress={() => actions.tab(tab)} />
           ))}
         </Box>
         <Button key="github" label={GITHUB_LABEL} plain dimColor onPress={() => actions.github()} />

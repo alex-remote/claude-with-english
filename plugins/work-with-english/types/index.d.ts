@@ -10,6 +10,8 @@ export type WweSettings = {
   delayUnit: 'ms' | 's'
   /** F4 */
   strict: boolean
+  /** 快捷键和按钮: 替换为译文 (替换为纠错) and 清空输入框 on the band */
+  bandButtons: boolean
   /** F7: the service that translates, corrects and analyses */
   translateService: 'claude' | 'openai'
   /** F6, F9 */

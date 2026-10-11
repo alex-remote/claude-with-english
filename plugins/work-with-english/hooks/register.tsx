@@ -327,11 +327,14 @@ export const register: Register = on => {
     }
     const picked = await read($, pickAtom)
     // F9 › 设置项: back to 段落模式, a selected passage goes at once; the settings sync clears it after
-    const isParagraph = (await read($, settingsAtom)).readingMode === 'paragraph'
+    const shown = await read($, settingsAtom)
+    const isParagraph = shown.readingMode === 'paragraph'
     const vm = {
       band: await read($, bandAtom),
       speaking: await read($, speakingAtom),
       pick: picked && picked.kind !== 'word' && isParagraph ? null : picked,
+      hasButtons: shown.bandButtons,
+      isDesktop: e.surface === 'desktop',
     }
     if (!isShown(vm.band, vm.pick)) {
       return next(e)

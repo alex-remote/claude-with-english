@@ -255,13 +255,24 @@ describe('设置 Pane', () => {
     for (const [tab, shown] of pages) {
       await ui.press(tab)
       expect(shown()).toBeDefined()
-      // Only the open tab is drawn at full strength
-      expect(ui.find({ key: tab })?.props.dimColor).toBe(false)
+      // The open tab is the main button; the others are plain dim labels
+      expect(ui.find({ key: tab })?.props.variant).toBe('primary')
+      expect(ui.find({ key: tab })?.props.dimColor).toBeUndefined()
     }
     await ui.press('tab-services')
     expect(ui.label('svc-claude')).toBe('Claude Code 账号（用于翻译）')
     expect(fake.toasts).toEqual([])
     expect(fake.store.size).toBe(0)
+  })
+
+  test('横条按钮：在“快捷键”页，默认开，按下就保存并弹 Toast', async () => {
+    const { fake, ui } = await opened()
+    await ui.press('tab-shortcuts')
+    expect(ui.label('band-buttons')).toBe('开')
+    await ui.press('band-buttons')
+    expect(fake.store.get('settings/bandButtons')).toBe(false)
+    expect(fake.toasts).toEqual(['已保存：横条按钮 关'])
+    expect(ui.label('band-buttons')).toBe('关')
   })
 
   test('严格模式：按下就保存，store 里是新值，弹 Toast', async () => {
