@@ -26,10 +26,14 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
     await host.ui.open({ id: PANE_ID, title: 'work-with-english', closeOnEscape: true, ...(box.text === '' ? { focus: true } : {}) })
   }
 
-  /** The card on the lookup: the selection line's, when it has one, so both say the same */
-  async function lookupAndCard(word: string, sentence: string | null, known: WweLookup | null = null) {
+  /** The card on the lookup: the selection line's, when it has one (or one on its way), so both say the same */
+  async function lookupAndCard(word: string, sentence: string | null, known: WweLookup | null | Promise<WweLookup | null> = null) {
     const ticket = slot.begin()
-    const lookup = known ? { ok: true as const, value: known } : await run(host, { kind: 'lookup', word, sentence }, { signal: ticket.signal })
+    const shared = await known
+    if (!ticket.isCurrent()) {
+      return
+    }
+    const lookup = shared ? { ok: true as const, value: shared } : await run(host, { kind: 'lookup', word, sentence }, { signal: ticket.signal })
     if (!ticket.isCurrent()) {
       return
     }
@@ -66,8 +70,8 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
       )
     },
 
-    /** F10: 解析 on a selected word, with the sentence it was read in when known */
-    async analyseWord(word: string, sentence: string | null, known: WweLookup | null = null) {
+    /** F10: 解析 on a selected word, with the sentence it was read in when known, and the line's lookup */
+    async analyseWord(word: string, sentence: string | null, known: WweLookup | null | Promise<WweLookup | null> = null) {
       await show({ kind: 'word', status: 'pending', subject: word, sentence, isSentence: false, text: null, word: null, error: null, back: null })
       await lookupAndCard(word, sentence, known)
     },

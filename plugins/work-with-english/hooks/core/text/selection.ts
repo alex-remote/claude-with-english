@@ -168,6 +168,19 @@ function sentenceSpans(block: string): Array<[number, number]> {
   return spans
 }
 
+/**
+ * How many sentences a selected passage touches, for F11's 这句的难词: each
+ * of its lines (a paragraph, a list item) split as sentenceOf splits a
+ * block. A sentence cut short by the selection still counts as one.
+ */
+export function sentenceCount(text: string): number {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .reduce((count, line) => count + sentenceSpans(line).length, 0)
+}
+
 function matcherOf(selected: string): RegExp | null {
   const { core } = splitEdges(selected.trim())
   if (!core) {

@@ -91,8 +91,13 @@ const PICK_PREVIEW = 60
 function pickRows(ui: BandUi, pick: WwePick, speaking: WweSpeaking, actions: BandActions, isFirst: boolean) {
   const { Box, Text, Button } = ui
   const label = pick.via === 'copy' ? COPIED : SELECTED
-  const shown = pick.text.length > PICK_PREVIEW ? `${pick.text.slice(0, PICK_PREVIEW)}…` : pick.text
-  const isReading = speaking?.key === 'pick'
+  // A word once looked up shows as the entry it belongs to (stand as stand out, blocks as block), the
+  // form selected in the note after it (F9 › 词形和短语); on one line, a passage's own breaks left out
+  const entry = pick.kind === 'word' && pick.lookup?.status === 'done' && pick.lookup.value ? pick.lookup.value.lemma : pick.text
+  const flat = entry.replace(/\s+/g, ' ').trim()
+  const shown = flat.length > PICK_PREVIEW ? `${flat.slice(0, PICK_PREVIEW)}…` : flat
+  // By what it reads (register.tsx's pickSpeak): a line for another selection is another 朗读 (F8 › 同时只读一处)
+  const isReading = speaking?.key === `pick-${pick.text}`
   let more = null
   if (pick.kind === 'word' && pick.lookup) {
     const { lookup } = pick
@@ -167,7 +172,8 @@ function orderedSenses(senses: readonly string[], cur: number | null) {
   return cur === null ? all : [...all.filter(s => s.isCurrent), ...all.filter(s => !s.isCurrent)]
 }
 
-export function bandView(ui: BandUi, vm: BandVm, actions: BandActions) {
+/** `below`: what the mods under this one draw above the prompt, kept at the end (docs/dev-plan.md, hook 表) */
+export function bandView(ui: BandUi, vm: BandVm, actions: BandActions, below: JSX.Element | null = null) {
   const { Box, Text, Button } = ui
   const { band, speaking, pick } = vm
   const mode = band.mode === 'none' ? 'translate' : band.mode
@@ -225,6 +231,13 @@ export function bandView(ui: BandUi, vm: BandVm, actions: BandActions) {
   }
   if (pick) {
     rows.push(pickRows(ui, pick, speaking, actions, rows.length === 0))
+  }
+  if (below) {
+    rows.push(
+      <Box key="below" flexDirection="column">
+        {below}
+      </Box>,
+    )
   }
   return <Box flexDirection="column">{rows}</Box>
 }

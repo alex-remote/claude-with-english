@@ -1,7 +1,7 @@
 import type { WweLookup, WwePick } from '../../../types'
 import { createSlot } from '../../core/async/slot'
 import { lookupFailed, translateFailed } from '../../core/copy/pick'
-import { classifySelection, findSentenceInReplies, looksLikeCode, sentenceOf, shouldShow } from '../../core/text/selection'
+import { classifySelection, findSentenceInReplies, looksLikeCode, sentenceCount, sentenceOf, shouldShow } from '../../core/text/selection'
 import { run } from '../../services/translate'
 import type { Host } from '../../host'
 
@@ -28,20 +28,34 @@ export function createPicker(
     replies: () => readonly string[]
   },
 ) {
-  let lastSeen = ''
+  /**
+   * The terminal's selection last offered, and the reply it lies in: the
+   * engine keeps answering it after ✕ (P25), so it comes up once while it
+   * stands, its reply id gone while scrolled out of the drawn rows. The same
+   * text in another reply is a new selection. Forgotten once the engine
+   * answers none (the next prompt or command has run), so the same word
+   * selected again comes up again. A copy is never held back: the watcher
+   * prints one only for a new ⌘C.
+   */
+  let lastSeen: { text: string; requestId: string | undefined } | null = null
   const lookups = createSlot()
   const translations = createSlot()
+  /** The line's lookup on its way, which the word card waits for rather than asking again (阅读辅助 › 同一个词，释义一致) */
+  let looking: { word: string; answer: Promise<WweLookup | null> } | null = null
 
   async function offer(raw: string, via: WwePick['via'], requestId?: string) {
-    if (raw === lastSeen) {
-      return
+    if (via === 'select') {
+      const seen = lastSeen
+      if (seen?.text === raw && (seen.requestId === undefined || requestId === undefined || seen.requestId === requestId)) {
+        return
+      }
+      lastSeen = { text: raw, requestId }
     }
-    lastSeen = raw
     const selection = classifySelection(raw)
     const settings = await host.state.settings.get()
     const markdown = requestId ? deps.markdownOf(requestId) : undefined
-    // A passage wholly in code does not come up; the desktop cannot tell where a copy came from
-    const inCode = selection.kind === 'text' && (via === 'copy' ? looksLikeCode(raw) : markdown !== undefined && isInCode(markdown, raw))
+    // A passage wholly in code does not come up, however long; the desktop cannot tell where a copy came from
+    const inCode = selection.kind !== 'word' && (via === 'copy' ? looksLikeCode(raw) : markdown !== undefined && isInCode(markdown, raw))
     if (!shouldShow(selection.kind, settings.readingMode, inCode) || selection.kind === 'none') {
       return
     }
@@ -71,7 +85,15 @@ export function createPicker(
 
   async function lookUp(word: string, sentence: string | null) {
     const ticket = lookups.begin()
-    const result = await run(host, { kind: 'lookup', word, sentence }, { signal: ticket.signal })
+    const asked = run(host, { kind: 'lookup', word, sentence }, { signal: ticket.signal })
+    looking = {
+      word,
+      answer: asked.then(
+        result => (result.ok && ticket.isCurrent() ? result.value : null),
+        () => null,
+      ),
+    }
+    const result = await asked
     if (!ticket.isCurrent()) {
       return
     }
@@ -95,6 +117,8 @@ export function createPicker(
           const selection = await host.ui.selection()
           if (selection && selection.text.trim() !== '') {
             await offer(selection.text, 'select', selection.requestId)
+          } else {
+            lastSeen = null
           }
         })().catch(error => host.ui.debug(`selection: ${String(error)}`))
       })
@@ -170,8 +194,20 @@ export function createPicker(
       }
     },
 
-    /** The word's senses, when known, so the card says the same (阅读辅助 › 同一个词，释义一致) */
-    lookupOf: (pick: WwePick): WweLookup | null => (pick.lookup?.status === 'done' ? pick.lookup.value : null),
+    /**
+     * The word's senses, so the card says the same (阅读辅助 › 同一个词，释义一致):
+     * known, or still on their way when the line is 查询中…; null when the
+     * line has none to give (it failed), and the card asks for its own.
+     */
+    lookupOf(pick: WwePick): WweLookup | null | Promise<WweLookup | null> {
+      if (pick.lookup?.status === 'done') {
+        return pick.lookup.value
+      }
+      return pick.lookup?.status === 'pending' && looking?.word === pick.text ? looking.answer : null
+    },
+
+    /** F11 from the line: 这句的难词 only for one sentence, 这段的难词 for more (F11 › 难词) */
+    isOneSentence: (pick: WwePick) => pick.kind !== 'word' && sentenceCount(pick.text) === 1,
   }
 }
 

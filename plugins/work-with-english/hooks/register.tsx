@@ -325,12 +325,21 @@ export const register: Register = on => {
         })().catch(error => bound.ui.debug(`layout: ${String(error)}`))
       })
     }
-    const vm = { band: await read($, bandAtom), speaking: await read($, speakingAtom), pick: await read($, pickAtom) }
+    const picked = await read($, pickAtom)
+    // F9 › 设置项: back to 段落模式, a selected passage goes at once; the settings sync clears it after
+    const isParagraph = (await read($, settingsAtom)).readingMode === 'paragraph'
+    const vm = {
+      band: await read($, bandAtom),
+      speaking: await read($, speakingAtom),
+      pick: picked && picked.kind !== 'word' && isParagraph ? null : picked,
+    }
     if (!isShown(vm.band, vm.pick)) {
       return next(e)
     }
     const current = band
     const pick = vm.pick
+    // What the mods under this one draw stays, under the band's lines
+    const below = await next(e)
     return bandView($.ui.resolve(e), vm, {
       replace: () => void current.replace().catch(error => host?.ui.debug(`replace: ${String(error)}`)),
       clear: () => void current.clear().catch(error => host?.ui.debug(`clear: ${String(error)}`)),
@@ -344,20 +353,22 @@ export const register: Register = on => {
       pickClose: () => void picker?.close().catch(error => host?.ui.debug(`pick close: ${String(error)}`)),
       pickSpeak: () => {
         if (pick && speaker) {
-          void speaker.speak('pick', pick.text)
+          // Keyed by what it reads, as the view tells 停止 by (features/band/view.tsx › pickRows)
+          void speaker.speak(`pick-${pick.text}`, pick.text)
         }
       },
       pickAnalyse: () => {
         if (!pick || !analyses) {
           return
         }
+        // A word waits for the line's lookup still on its way, so both say the same
         const done = pick.kind === 'word'
           ? analyses.analyseWord(pick.text, pick.sentence, picker?.lookupOf(pick) ?? null)
-          : analyses.analyseText(pick.text, true)
+          : analyses.analyseText(pick.text, picker?.isOneSentence(pick) ?? false)
         void done.catch(error => host?.ui.debug(`pick analyse: ${String(error)}`))
       },
       pickTranslate: () => void picker?.toggleTranslation().catch(error => host?.ui.debug(`pick translate: ${String(error)}`)),
-    })
+    }, below)
   })
 
   // F6: the main conversation's reply blocks, as they are kept

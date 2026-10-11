@@ -4,6 +4,7 @@ import {
   classifySelection,
   findSentenceInReplies,
   looksLikeCode,
+  sentenceCount,
   sentenceOf,
   shouldShow,
 } from '../../hooks/core/text/selection'
@@ -371,5 +372,23 @@ describe('findSentenceInReplies', () => {
   test('no reply has it: no 本句', () => {
     expect(findSentenceInReplies([OLDER, NEWER], 'expire')).toBeNull()
     expect(findSentenceInReplies([], 'cause')).toBeNull()
+  })
+})
+
+describe('sentenceCount', () => {
+  test('one sentence, or a part of one, is one: 这句的难词', () => {
+    expect(sentenceCount('I found the cause.')).toBe(1)
+    expect(sentenceCount('The config loader reads PORT before')).toBe(1)
+    expect(sentenceCount('Some files, e.g. the config, load late.')).toBe(1)
+  })
+
+  test('several sentences, or lines, are a passage: 这段的难词', () => {
+    expect(sentenceCount('I found the cause. It was the loader.')).toBe(2)
+    expect(sentenceCount('found the cause. The config')).toBe(2)
+    expect(sentenceCount('Two things stand out:\n\nEvery request waits for the cache lock, so one slow write blocks all reads.')).toBe(2)
+  })
+
+  test('nothing is no sentence', () => {
+    expect(sentenceCount('  \n ')).toBe(0)
   })
 })
