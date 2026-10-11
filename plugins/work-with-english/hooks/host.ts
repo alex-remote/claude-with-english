@@ -1,6 +1,6 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
-import type { WweAnalysis, WweBand, WweEnv, WwePane, WwePara, WweSettingsView, WweSpeaking } from '../types'
+import type { WweAnalysis, WweBand, WweEnv, WwePane, WwePara, WwePick, WweSettingsView, WweSpeaking } from '../types'
 
 type E = EngineInterface
 
@@ -36,6 +36,7 @@ export type Host = {
   }
   proc: {
     run: E['process']['run']
+    spawn: E['process']['spawn']
   }
   fs: {
     read: (path: string) => Promise<string>
@@ -60,6 +61,8 @@ export type Host = {
     pluginCacheDir: () => Promise<string | undefined>
     /** Whether `SSH_CONNECTION` or `SSH_TTY` is set */
     isSsh: () => Promise<boolean>
+    /** Whether the Claude desktop app runs this session (it sets `CLAUDE_CODE_DESKTOP_APP_VERSION`) */
+    isDesktopApp: () => Promise<boolean>
   }
   ui: {
     toast: (text: string) => void
@@ -111,5 +114,7 @@ export type Host = {
     para: FamilyCell<WwePara>
     /** F10, F11: what the pane's analysis view shows */
     analysis: Cell<WweAnalysis | null>
+    /** F9: the selection line */
+    pick: Cell<WwePick | null>
   }
 }

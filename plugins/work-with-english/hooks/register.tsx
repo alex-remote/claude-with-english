@@ -13,6 +13,8 @@ import { bandView, isShown } from './features/band/view'
 import { PANE_ID, createAnalyses } from './features/analysis/controller'
 import type { Analyses } from './features/analysis/controller'
 import { analysisView } from './features/analysis/view'
+import { createPicker } from './features/pick/controller'
+import type { Picker } from './features/pick/controller'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
 import { askLines, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
@@ -40,6 +42,7 @@ const speakingAtom = atom({ plugin: 'work-with-english', key: 'speaking' } as co
 const paneAtom = atom({ plugin: 'work-with-english', key: 'pane' } as const, INITIAL_PANE)
 const paraAtom = atom({ plugin: 'work-with-english', key: 'para' } as const, NO_PARA)
 const analysisAtom = atom({ plugin: 'work-with-english', key: 'analysis' } as const, null)
+const pickAtom = atom({ plugin: 'work-with-english', key: 'pick' } as const, null)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -53,6 +56,10 @@ export const register: Register = on => {
   let speaker: Speaker | null = null
   let replies: Replies | null = null
   let analyses: Analyses | null = null
+  let picker: Picker | null = null
+  /** F9: each reply's Markdown by the request id it is drawn under, to find a selection's sentence and code */
+  const markdownByRequest = new Map<string, string>()
+  let lastReadingMode: string | null = null
   /** The terminal's layout was seen once (运行环境 › 启动时的提示) */
   let isLayoutSeen = false
 
@@ -60,6 +67,10 @@ export const register: Register = on => {
   async function loadSettings(bound: Host) {
     const settings = await refresh(bound)
     band?.setDelay(settings.delayMs)
+    if (lastReadingMode !== null && lastReadingMode !== settings.readingMode) {
+      await picker?.onReadingMode(settings.readingMode)
+    }
+    lastReadingMode = settings.readingMode
   }
 
   on('session.start', async ($, e, next) => {
@@ -71,7 +82,7 @@ export const register: Register = on => {
       },
       model: { complete: (request, options) => $.model.complete(request, options) },
       http: { fetch: (url, init) => $.http.fetch(url, init) },
-      proc: { run: (argv, init) => $.process.run(argv, init) },
+      proc: { run: (argv, init) => $.process.run(argv, init), spawn: request => $.process.spawn(request) },
       fs: {
         read: path => $.fs.read(path),
         readBytes: path => $.fs.read(path, { as: 'bytes' }),
@@ -91,6 +102,7 @@ export const register: Register = on => {
         pluginCacheDir: () => $.env.get('CLAUDE_CODE_PLUGIN_CACHE_DIR'),
         isSsh: async () =>
           (await $.env.get('SSH_CONNECTION')) !== undefined || (await $.env.get('SSH_TTY')) !== undefined,
+        isDesktopApp: async () => (await $.env.get('CLAUDE_CODE_DESKTOP_APP_VERSION')) !== undefined,
       },
       ui: {
         toast: text => $.ui.toast(text),
@@ -136,6 +148,7 @@ export const register: Register = on => {
           update: (id, fn) => update($, memberOf(paraAtom, { requestId: id }), fn),
         },
         analysis: { get: () => read($, analysisAtom), update: fn => update($, analysisAtom, fn) },
+        pick: { get: () => read($, pickAtom), update: fn => update($, pickAtom, fn) },
       },
     }
     host = bound
@@ -144,6 +157,16 @@ export const register: Register = on => {
     const repliesOf = createReplies(bound)
     replies = repliesOf
     analyses = createAnalyses(bound, async () => {})
+    const pickerOf = createPicker(bound, {
+      markdownOf: requestId => markdownByRequest.get(requestId),
+      replies: () => [...markdownByRequest.values()],
+    })
+    picker = pickerOf
+    if (e.surface === 'terminal') {
+      pickerOf.watchTerminal()
+    } else if (await bound.env.isDesktopApp().catch(() => false)) {
+      pickerOf.watchDesktop()
+    }
     await loadSettings(bound).catch(error => bound.ui.debug(`settings: ${String(error)}`))
 
     // After the first prompt can go: the store's backup first, before anything writes to it
@@ -194,9 +217,17 @@ export const register: Register = on => {
   on('prompt.edit', async ($, e, next) => (band ? band.onEdit(e, next) : next(e))).catch(($, e, next) => next(e))
 
   // F4: the person's Enter
-  on('prompt.submit', async ($, e, next) => (band ? band.onSubmit(e, next) : next(e))).catch(($, e, next) =>
-    next(e),
-  )
+  on('prompt.submit', async ($, e, next) => {
+    if (!band) {
+      return next(e)
+    }
+    const result = await band.onSubmit(e, next)
+    // F9: the selection line goes when the next message is sent
+    if (result.drop === undefined && e.origin.kind === 'composer') {
+      void picker?.close().catch(error => host?.ui.debug(`pick close: ${String(error)}`))
+    }
+    return result
+  }).catch(($, e, next) => next(e))
 
   // The band above the prompt
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -218,11 +249,12 @@ export const register: Register = on => {
         })().catch(error => bound.ui.debug(`layout: ${String(error)}`))
       })
     }
-    const vm = { band: await read($, bandAtom), speaking: await read($, speakingAtom) }
-    if (!isShown(vm.band)) {
+    const vm = { band: await read($, bandAtom), speaking: await read($, speakingAtom), pick: await read($, pickAtom) }
+    if (!isShown(vm.band, vm.pick)) {
       return next(e)
     }
     const current = band
+    const pick = vm.pick
     return bandView($.ui.resolve(e), vm, {
       replace: () => void current.replace().catch(error => host?.ui.debug(`replace: ${String(error)}`)),
       clear: () => void current.clear().catch(error => host?.ui.debug(`clear: ${String(error)}`)),
@@ -233,6 +265,22 @@ export const register: Register = on => {
         }
       },
       sendAnyway: () => void current.sendAnyway().catch(error => host?.ui.debug(`send anyway: ${String(error)}`)),
+      pickClose: () => void picker?.close().catch(error => host?.ui.debug(`pick close: ${String(error)}`)),
+      pickSpeak: () => {
+        if (pick && speaker) {
+          void speaker.speak('pick', pick.text)
+        }
+      },
+      pickAnalyse: () => {
+        if (!pick || !analyses) {
+          return
+        }
+        const done = pick.kind === 'word'
+          ? analyses.analyseWord(pick.text, pick.sentence, picker?.lookupOf(pick) ?? null)
+          : analyses.analyseText(pick.text, true)
+        void done.catch(error => host?.ui.debug(`pick analyse: ${String(error)}`))
+      },
+      pickTranslate: () => void picker?.toggleTranslation().catch(error => host?.ui.debug(`pick translate: ${String(error)}`)),
     })
   })
 
@@ -297,6 +345,7 @@ export const register: Register = on => {
 
   // F6: each paragraph as Claude Code draws it, its translation under it
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    markdownByRequest.set(e.requestId, e.props.text)
     const current = replies
     const blocks = segment(e.props.text)
     if (!current || !blocks.some(translatable)) {

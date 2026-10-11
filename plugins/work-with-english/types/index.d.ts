@@ -169,6 +169,22 @@ export type WweAnalysis = {
   back: { subject: string; isSentence: boolean; text: WweTextResult } | null
 }
 
+/** F9: the selection line at the bottom of the band */
+export type WwePick = {
+  /** A word or a phrase, a passage, or a passage too long to work on */
+  kind: 'word' | 'text' | 'long'
+  /** What was selected (a word without the punctuation around it) */
+  text: string
+  /** 已选中 (the fullscreen terminal) or 已复制 (the desktop app, after ⌘C) */
+  via: 'select' | 'copy'
+  /** The sentence it was read in, for 本句; null when not known */
+  sentence: string | null
+  /** A word's senses */
+  lookup: { status: 'pending' | 'done' | 'failed'; value: WweLookup | null; error: string | null } | null
+  /** A passage's translation, shown under it after 翻译 */
+  tr: { status: 'none' | 'pending' | 'done' | 'failed'; zh: string | null; error: string | null; shown: boolean }
+}
+
 /** What is being read aloud now (F8), so other speak buttons dim or stop it. */
 export type WweSpeaking = null | { key: string; via: 'system' | 'online' }
 
@@ -182,6 +198,7 @@ declare module 'claude-code' {
       pane: WwePane
       para: StateFamily<WwePara>
       analysis: WweAnalysis | null
+      pick: WwePick | null
     }
   }
 }

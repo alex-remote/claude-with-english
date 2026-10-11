@@ -1,6 +1,6 @@
 import type { Elements } from 'claude-code'
 
-import type { WweBand, WweMark, WweSpeaking } from '../../../types'
+import type { WweBand, WweMark, WwePick, WweSpeaking } from '../../../types'
 import {
   blockedHint,
   clearButton,
@@ -13,6 +13,18 @@ import {
   tip,
   useButton,
 } from '../../core/copy/band'
+import {
+  ANALYSE,
+  COPIED,
+  HIDE_TRANSLATION,
+  SELECTED,
+  TOO_LONG,
+  TRANSLATE,
+  TRANSLATION,
+  looking,
+  translating,
+} from '../../core/copy/pick'
+import { THIS_SENTENCE } from '../../core/copy/analysis'
 
 // The band above the prompt as F1 draws it: the target-language row with
 // 朗读 at its right, the source row under it, the buttons of F2 and F3 with
@@ -25,11 +37,17 @@ export type BandActions = {
   clear: () => void
   speak: () => void
   sendAnyway: () => void
+  /** F9's selection line */
+  pickClose: () => void
+  pickSpeak: () => void
+  pickAnalyse: () => void
+  pickTranslate: () => void
 }
 
 export type BandVm = {
   band: WweBand
   speaking: WweSpeaking
+  pick: WwePick | null
 }
 
 /**
@@ -61,11 +79,97 @@ function marked(Text: BandUi['Text'], text: string, marks: readonly WweMark[]) {
 }
 
 /** Whether the band shows anything: otherwise the hook leaves the site to Claude Code. */
-export const isShown = (band: WweBand) => band.mode !== 'none' || band.blocked !== null
+export const isShown = (band: WweBand, pick: WwePick | null = null) => band.mode !== 'none' || band.blocked !== null || pick !== null
+
+const PICK_PREVIEW = 60
+
+/**
+ * F9's selection line, always the band's last: 已选中 (or 已复制) and what
+ * was selected, its buttons and ✕ at the right; under it, a word's senses
+ * (本句 first, the others lighter) or a passage's translation.
+ */
+function pickRows(ui: BandUi, pick: WwePick, speaking: WweSpeaking, actions: BandActions, isFirst: boolean) {
+  const { Box, Text, Button } = ui
+  const label = pick.via === 'copy' ? COPIED : SELECTED
+  const shown = pick.text.length > PICK_PREVIEW ? `${pick.text.slice(0, PICK_PREVIEW)}…` : pick.text
+  const isReading = speaking?.key === 'pick'
+  let more = null
+  if (pick.kind === 'word' && pick.lookup) {
+    const { lookup } = pick
+    more =
+      lookup.status === 'pending' ? (
+        <Text dimColor>{looking()}</Text>
+      ) : lookup.status === 'failed' || !lookup.value ? (
+        <Text dimColor>{lookup.error ?? ''}</Text>
+      ) : (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
+          {orderedSenses(lookup.value.senses, lookup.value.cur).map(({ sense, isCurrent }, i) => (
+            <Text key={`sense-${i}`} dimColor={!isCurrent && lookup.value?.cur !== null}>
+              {isCurrent ? <Text inverse>{` ${THIS_SENTENCE} `}</Text> : null}
+              {isCurrent ? ' ' : ''}
+              {sense}
+            </Text>
+          ))}
+        </Box>
+      )
+  } else if (pick.kind === 'text' && pick.tr.shown && pick.tr.status !== 'none') {
+    more =
+      pick.tr.status === 'pending' ? (
+        <Text dimColor>{translating()}</Text>
+      ) : (
+        <Text dimColor>{pick.tr.status === 'done' ? `${TRANSLATION}${pick.tr.zh ?? ''}` : (pick.tr.error ?? '')}</Text>
+      )
+  }
+  const meta =
+    pick.kind === 'word' && pick.lookup?.value
+      ? [pick.lookup.value.ipa, pick.lookup.value.formNote].filter(Boolean).join('  ')
+      : ''
+  return (
+    <Box key="pick" flexDirection="column" marginTop={isFirst ? 0 : 1}>
+      <Box flexDirection="row" columnGap={2}>
+        <Text dimColor>{label}</Text>
+        <Box flexGrow={1} flexShrink={1} flexDirection="row" columnGap={2}>
+          <Text bold>{pick.kind === 'long' ? TOO_LONG : shown}</Text>
+          {meta !== '' && <Text dimColor>{meta}</Text>}
+        </Box>
+        {pick.kind === 'text' && (
+          <Button
+            key="pick-translate"
+            label={pick.tr.status === 'pending' ? translating() : pick.tr.status === 'done' && pick.tr.shown ? HIDE_TRANSLATION : TRANSLATE}
+            plain
+            onPress={() => actions.pickTranslate()}
+          />
+        )}
+        {pick.kind !== 'long' && (
+          <Button
+            key="pick-speak"
+            label={speakButton(isReading ? (speaking?.via ?? null) : null)}
+            plain
+            dimColor={speaking !== null && speaking.via === 'system' && !isReading}
+            onPress={() => actions.pickSpeak()}
+          />
+        )}
+        {pick.kind !== 'long' && <Button key="pick-analyse" label={ANALYSE} plain onPress={() => actions.pickAnalyse()} />}
+        <Button key="pick-close" label="✕" plain role="dismiss" onPress={() => actions.pickClose()} />
+      </Box>
+      {more && (
+        <Box paddingLeft={label.length * 2 + 2} flexDirection="column">
+          {more}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+/** The sense the sentence uses first (F9 › 标出这句里的意思) */
+function orderedSenses(senses: readonly string[], cur: number | null) {
+  const all = senses.map((sense, i) => ({ sense, isCurrent: i === cur }))
+  return cur === null ? all : [...all.filter(s => s.isCurrent), ...all.filter(s => !s.isCurrent)]
+}
 
 export function bandView(ui: BandUi, vm: BandVm, actions: BandActions) {
   const { Box, Text, Button } = ui
-  const { band, speaking } = vm
+  const { band, speaking, pick } = vm
   const mode = band.mode === 'none' ? 'translate' : band.mode
   const hasTarget = band.mode !== 'none' && band.error === null && band.target !== ''
   const readingHere = speaking?.key === 'band' ? speaking.via : null
@@ -118,6 +222,9 @@ export function bandView(ui: BandUi, vm: BandVm, actions: BandActions) {
         <Button key="send-anyway" label={sendAnywayButton()} onPress={() => actions.sendAnyway()} />
       </Box>,
     )
+  }
+  if (pick) {
+    rows.push(pickRows(ui, pick, speaking, actions, rows.length === 0))
   }
   return <Box flexDirection="column">{rows}</Box>
 }

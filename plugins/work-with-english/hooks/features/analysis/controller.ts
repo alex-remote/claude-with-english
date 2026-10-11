@@ -1,4 +1,4 @@
-import type { WweAnalysis, WweTextResult } from '../../../types'
+import type { WweAnalysis, WweLookup, WweTextResult } from '../../../types'
 import { createSlot } from '../../core/async/slot'
 import { analysisFailed } from '../../core/copy/analysis'
 import { sentenceOf } from '../../core/text/selection'
@@ -26,9 +26,10 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
     await host.ui.open({ id: PANE_ID, title: 'work-with-english', closeOnEscape: true, ...(box.text === '' ? { focus: true } : {}) })
   }
 
-  async function lookupAndCard(word: string, sentence: string | null) {
+  /** The card on the lookup: the selection line's, when it has one, so both say the same */
+  async function lookupAndCard(word: string, sentence: string | null, known: WweLookup | null = null) {
     const ticket = slot.begin()
-    const lookup = await run(host, { kind: 'lookup', word, sentence }, { signal: ticket.signal })
+    const lookup = known ? { ok: true as const, value: known } : await run(host, { kind: 'lookup', word, sentence }, { signal: ticket.signal })
     if (!ticket.isCurrent()) {
       return
     }
@@ -66,9 +67,9 @@ export function createAnalyses(host: Host, beforeOpen: () => Promise<void>) {
     },
 
     /** F10: 解析 on a selected word, with the sentence it was read in when known */
-    async analyseWord(word: string, sentence: string | null) {
+    async analyseWord(word: string, sentence: string | null, known: WweLookup | null = null) {
       await show({ kind: 'word', status: 'pending', subject: word, sentence, isSentence: false, text: null, word: null, error: null, back: null })
-      await lookupAndCard(word, sentence)
+      await lookupAndCard(word, sentence, known)
     },
 
     /** F10 from F11's hard words: the word in the first sentence of the paragraph that holds it */

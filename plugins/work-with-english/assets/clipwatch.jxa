@@ -1,0 +1,22 @@
+// F9 on the desktop app, which does not report the selection: watches the
+// general pasteboard and prints one JSON line each time it changes, with the
+// frontmost app's bundle id. The text is left out when the copy is marked
+// concealed (password managers, nspasteboard.org) or Claude is not in front.
+ObjC.import('AppKit')
+const CLAUDE = 'com.anthropic.claudefordesktop'
+const CONCEALED = 'org.nspasteboard.ConcealedType'
+const pasteboard = $.NSPasteboard.generalPasteboard
+let last = pasteboard.changeCount
+while (true) {
+  delay(0.3)
+  const count = pasteboard.changeCount
+  if (count === last) continue
+  last = count
+  const app = $.NSWorkspace.sharedWorkspace.frontmostApplication
+  const front = app.isNil() ? '' : app.bundleIdentifier.js
+  const types = ObjC.deepUnwrap(pasteboard.types) || []
+  const concealed = types.indexOf(CONCEALED) >= 0
+  const string = pasteboard.stringForType($.NSPasteboardTypeString)
+  const text = !concealed && front === CLAUDE && !string.isNil() ? string.js : ''
+  console.log(JSON.stringify({ front: front === CLAUDE, concealed, text }))
+}
