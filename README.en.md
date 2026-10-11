@@ -67,4 +67,4 @@ Then open the settings with:
 
 ---
 
-If claude-with-english helps you, a star on [GitHub](https://github.com/alex-remote/claude-with-english) is welcome.
+If claude-with-english helps you, a star ⭐ on [GitHub](https://github.com/alex-remote/claude-with-english) is welcome.

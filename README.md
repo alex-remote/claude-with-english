@@ -67,4 +67,4 @@ claude-with-english 是一个免费开源的 Claude Code 插件。你照常用 C
 
 ---
 
-如果 claude-with-english 对你有帮助，欢迎在 [GitHub](https://github.com/alex-remote/claude-with-english) 上点个 Star。
+如果 claude-with-english 对你有帮助，欢迎在 [GitHub](https://github.com/alex-remote/claude-with-english) 上点个 Star ⭐
