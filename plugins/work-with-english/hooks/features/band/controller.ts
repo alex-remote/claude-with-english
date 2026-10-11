@@ -5,9 +5,11 @@ import { createSlot } from '../../core/async/slot'
 import { rowFailure, strictBlocked, verifyFailure } from '../../core/copy/band'
 import { parseLeadingCommand, judgedText } from '../../core/text/command'
 import { bandMode, isEnglishMessage, shouldBlock } from '../../core/text/lang'
+import { diffMarks } from '../../core/text/diff'
 import { protect, restore, verify } from '../../core/text/protect'
 import { localDate } from '../../core/time'
 import { run } from '../../services/translate'
+import type { Failed } from '../../services/translate/types'
 import type { Host } from '../../host'
 import { recordSent } from '../stats/record'
 import { keepDraft } from '../wordbook/drafts'
@@ -71,18 +73,18 @@ export function createBand(host: Host) {
   }
 
   /**
-   * Asks for `text`'s translation (or, from M3, correction) and shows it.
+   * Asks for `text`'s translation (F1) or correction (F15) and shows it.
    * Resolves with the new answer, or null when it failed or was superseded.
    */
   async function request(text: string, mode: 'translate' | 'correct'): Promise<Answer | null> {
     const ticket = slot.begin()
-    const isFirst = view.mode === 'none' || view.error !== null
+    const isFirst = view.mode !== mode || view.error !== null
     await setView(band => ({
       ...band,
       mode,
       isPending: true,
       // F1: the first request of a message shows `EN …` over the text it asks about
-      ...(isFirst ? { target: '', source: text, error: null, marks: [], isOk: false } : {}),
+      ...(isFirst ? { target: '', source: mode === 'translate' ? text : '', error: null, marks: [], isOk: false } : {}),
     }))
 
     // A leading command stays as typed: only what follows it is asked about
@@ -90,13 +92,26 @@ export function createBand(host: Host) {
     const body = leading ? leading.rest : text
     const prefix = leading ? text.slice(0, text.length - leading.rest.length) : ''
 
-    const ask = async () => {
+    type Got = { ok: true; target: string; source: string; isOk: boolean; verified: boolean }
+    const ask = async (): Promise<Got | Failed> => {
       const shielded = protect(body)
-      const result = await run(host, { kind: 'draft', text: shielded.masked }, { signal: ticket.signal })
+      if (mode === 'translate') {
+        const result = await run(host, { kind: 'draft', text: shielded.masked }, { signal: ticket.signal })
+        if (!result.ok) {
+          return result
+        }
+        const verified = verify(result.value, shielded.tokens) === 'ok'
+        return { ok: true, target: restore(result.value, shielded.tokens), source: text, isOk: false, verified }
+      }
+      const result = await run(host, { kind: 'correct', text: shielded.masked }, { signal: ticket.signal })
       if (!result.ok) {
         return result
       }
-      return { ok: true as const, value: restore(result.value, shielded.tokens), verified: verify(result.value, shielded.tokens) === 'ok' }
+      const verified = verify(result.value.corrected, shielded.tokens) === 'ok'
+      const corrected = restore(result.value.corrected, shielded.tokens)
+      // ✓: nothing to fix, the first row is the sentence as written
+      const isOk = result.value.ok || corrected.trim() === body.trim()
+      return { ok: true, target: isOk ? body : corrected, source: result.value.zh, isOk, verified: isOk || verified }
     }
 
     let outcome = await ask()
@@ -113,14 +128,16 @@ export function createBand(host: Host) {
       }
       failedText = text
       answer = null
+      const reason = outcome.reason
       await setView(band => ({
         ...band,
         mode,
         isPending: false,
-        error: rowFailure(mode, outcome.reason),
+        error: rowFailure(mode, reason),
         // F1: the second row becomes the text that was not translated
         source: text,
         target: '',
+        marks: [],
         showTip: false,
         blocked: band.blocked && { ...band.blocked, serviceDown: true },
       }))
@@ -128,22 +145,25 @@ export function createBand(host: Host) {
     }
 
     failedText = null
-    const target = prefix + outcome.value
-    answer = { text, mode, target, verified: outcome.verified, isOk: false }
+    const target = prefix + outcome.target
+    answer = { text, mode, target, verified: outcome.verified, isOk: outcome.isOk }
     if (mode === 'translate') {
       draft.sawTranslation = true
       draft.lastSource = text
     }
-    const showTip = view.showTip || (mode === 'translate' && (await isTipDue()))
+    // F15: the words the correction changed or added, marked; none on ✓
+    const marks = mode === 'correct' && !outcome.isOk ? diffMarks(text, target) : []
+    const showTip = mode === 'translate' && (view.showTip || (await isTipDue()))
+    const got = outcome
     await setView(band => ({
       ...band,
       mode,
       target,
-      source: text,
-      marks: [],
-      isOk: false,
+      source: got.source,
+      marks,
+      isOk: got.isOk,
       isPending: false,
-      error: outcome.verified ? null : verifyFailure(mode),
+      error: got.verified ? null : verifyFailure(mode),
       showTip,
     }))
     return answer
@@ -185,11 +205,10 @@ export function createBand(host: Host) {
     }
     const action = decidePause({ judged: await judgedOf(text), text, draft, answer, failed: failedText === text })
     if (action.kind === 'request') {
-      // M1 translates; the correction (F15) comes with M3
       if (action.mode === 'translate') {
         draft.retyping = false
-        await request(text, 'translate')
       }
+      await request(text, action.mode)
     }
   }
 
@@ -204,7 +223,7 @@ export function createBand(host: Host) {
   async function catchUpAndPut(text: string, mode: 'translate' | 'correct') {
     draft.pendingCtrlA = 1
     pause?.cancel()
-    const got = mode === 'translate' ? await request(text, mode) : null
+    const got = await request(text, mode)
     const presses = draft.pendingCtrlA
     draft.pendingCtrlA = 0
     if (!got) {
@@ -214,7 +233,8 @@ export function createBand(host: Host) {
       await empty()
       return
     }
-    if (got.verified) {
+    // F15: ✓ puts nothing in
+    if (got.verified && !got.isOk) {
       await put(got.target, mode, text)
     }
   }
@@ -302,10 +322,12 @@ export function createBand(host: Host) {
             promptText = box.text
             await setView(band => ({ ...band, blocked: { hasImage, serviceDown: false, isCleared, isLetThrough: false } }))
             // F4: the band catches up with what was sent, if it had not
+            // English with Chinese in it: the correction, the Chinese put into English,
+            // whatever the band showed before (F4, F15)
             const mode = bandMode(judgedText(typed, []) ?? '') ?? 'translate'
-            const isCaughtUp = answer !== null && answer.text === typed && failedText !== typed
-            if (!isCaughtUp && mode === 'translate') {
-              await request(typed, 'translate')
+            const isCaughtUp = answer !== null && answer.text === typed && answer.mode === mode && failedText !== typed
+            if (!isCaughtUp) {
+              await request(typed, mode)
             }
           })().catch(error => host.ui.debug(`band blocked: ${String(error)}`))
         })
@@ -328,17 +350,15 @@ export function createBand(host: Host) {
       const text = box.text
       // An empty Prompt, or English typed along the band: the band's text goes in as it is
       if (answer && (text === '' || text === answer.text || draft.retyping)) {
-        if (answer.verified) {
+        if (answer.verified && !answer.isOk) {
           await put(answer.target, answer.mode)
         }
         return
       }
       const mode = bandMode(judgedText(text, []) ?? '') === 'correct' ? 'correct' : 'translate'
-      if (mode === 'translate') {
-        const got = await request(text, mode)
-        if (got?.verified) {
-          await put(got.target, mode, text)
-        }
+      const got = await request(text, mode)
+      if (got?.verified && !got.isOk) {
+        await put(got.target, mode, text)
       }
     },
 

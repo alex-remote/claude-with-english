@@ -145,4 +145,61 @@ describe('band', () => {
     expect(await ui.find({ type: 'Text', text: '已放行这一条，按回车发送。' })).toBeDefined()
     expect((await enter($, '看看这个')).drop).toBeUndefined()
   })
+
+  test('F15: direct English is corrected at a pause, the changed word marked, and Control+A puts it in', async ($, on) => {
+    const w = world(on)
+    on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+    w.replies.push(JSON.stringify({ corrected: 'I fixed the bug yesterday.', zh: '我昨天已经修好了这个 bug。', ok: false }))
+    await start($, w)
+
+    await type($, '', 'I have fixed the bug yesterday.')
+    await w.clock.advance(700)
+    await w.clock.settle()
+
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect(await ui.find({ type: 'Text', text: 'fixed' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '我昨天已经修好了这个 bug。' })).toBeDefined()
+      expect(await ui.find({ key: 'replace' })).toBeDefined()
+      // No tip under a correction
+      expect(await ui.find({ type: 'Text', text: /^小技巧/ })).toBeUndefined()
+      await ui.unmount()
+    }
+    expect(await ctrlA($, 'I have fixed the bug yesterday.')).toEqual({ text: 'I fixed the bug yesterday.', cursor: 26 })
+  })
+
+  test("F15: nothing to fix shows ✓, no 替换为纠错, and Control+A stays the editor's own", async ($, on) => {
+    const w = world(on)
+    on('prompt.edit', ($, e) => (e.key ? { text: e.text, cursor: 0 } : { text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+    w.replies.push(JSON.stringify({ corrected: 'Run the tests.', zh: '运行测试。', ok: true }))
+    await start($, w)
+
+    await type($, '', 'Run the tests.')
+    await w.clock.advance(700)
+    await w.clock.settle()
+
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.find({ key: 'replace' })).toBeUndefined()
+    expect(await ui.find({ key: 'clear' })).toBeDefined()
+    // Passed on: the caret goes to the start, as Claude Code does it
+    expect(await ctrlA($, 'Run the tests.')).toEqual({ text: 'Run the tests.', cursor: 0 })
+  })
+
+  test('F4 + F15: English with Chinese in it, held back, turns into the corrected sentence', async ($, on) => {
+    const w = world(on)
+    on('prompt.edit', ($, e) => ({ text: e.text + e.inputText, cursor: (e.text + e.inputText).length }))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+    w.replies.push(JSON.stringify({ corrected: 'Run the tests and then deploy.', zh: '运行测试然后部署。', ok: false }))
+    await start($, w)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+    await type($, '', 'Run the tests 然后 deploy')
+    w.prompt = { text: 'Run the tests 然后 deploy', cursor: 23 }
+    expect((await enter($, 'Run the tests 然后 deploy')).drop).toBeDefined()
+    await w.clock.settle()
+    expect(await ui.find({ type: 'Text', text: 'and then' })).toBeDefined()
+    expect(w.asked.at(-1)?.system).toContain('correct')
+  })
 })

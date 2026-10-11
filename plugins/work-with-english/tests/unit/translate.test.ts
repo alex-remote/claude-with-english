@@ -318,7 +318,7 @@ describe('service choice', () => {
 
   test('a task kind whose prompt is not written yet is not sent', async () => {
     const { host, calls } = fakeHost(() => answered('x'))
-    expect(await run(host, { kind: 'correct', text: 'I have fixed the bug yesterday.' })).toMatchObject({
+    expect(await run(host, { kind: 'selection', text: 'The config loader reads PORT first.' })).toMatchObject({
       ok: false,
       kind: 'not-implemented',
     })

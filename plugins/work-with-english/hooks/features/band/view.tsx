@@ -1,10 +1,11 @@
 import type { Elements } from 'claude-code'
 
-import type { WweBand, WweSpeaking } from '../../../types'
+import type { WweBand, WweMark, WweSpeaking } from '../../../types'
 import {
   blockedHint,
   clearButton,
   firstPending,
+  nothingToFix,
   sendAnywayButton,
   sourceCode,
   speakButton,
@@ -31,6 +32,34 @@ export type BandVm = {
   speaking: WweSpeaking
 }
 
+/**
+ * F15: the corrected sentence with the words the correction changed or added
+ * in the accent color, underlined; deleted words are not shown (Text draws
+ * no strike-through we use).
+ */
+function marked(Text: BandUi['Text'], text: string, marks: readonly WweMark[]) {
+  if (marks.length === 0) {
+    return text
+  }
+  const parts = []
+  let at = 0
+  for (const [i, mark] of marks.entries()) {
+    if (mark.start > at) {
+      parts.push(text.slice(at, mark.start))
+    }
+    parts.push(
+      <Text key={`mark-${i}`} color="yellow" underline>
+        {text.slice(mark.start, mark.end)}
+      </Text>,
+    )
+    at = mark.end
+  }
+  if (at < text.length) {
+    parts.push(text.slice(at))
+  }
+  return parts
+}
+
 /** Whether the band shows anything: otherwise the hook leaves the site to Claude Code. */
 export const isShown = (band: WweBand) => band.mode !== 'none' || band.blocked !== null
 
@@ -51,8 +80,8 @@ export function bandView(ui: BandUi, vm: BandVm, actions: BandActions) {
         <Text dimColor>{firstPending()}</Text>
       ) : (
         <Text bold={!band.isPending} dimColor={band.isPending}>
-          {band.isOk ? '✓ ' : ''}
-          {band.target}
+          {band.isOk ? `${nothingToFix()} ` : ''}
+          {marked(Text, band.target, band.marks)}
         </Text>
       )
     rows.push(
