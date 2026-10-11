@@ -18,6 +18,10 @@ export type World = {
   prompt: { text: string; cursor: number }
   filled: string[]
   submitted: string[]
+  /** How long the model takes to answer, on the test's clock (none unless a test sets it) */
+  replyMs: number
+  /** Claude is at work until the clock reaches this; a plugin's prompt waits for it (P12) */
+  turnEndsAt: number | null
   clock: ReturnType<typeof mock.clock>
 }
 
@@ -31,6 +35,8 @@ export function world(on: On, seed: { store?: Record<string, unknown> } = {}): W
     prompt: { text: '', cursor: 0 },
     filled: [],
     submitted: [],
+    replyMs: 0,
+    turnEndsAt: null,
     clock: mock.clock(on, { now: Date.UTC(2026, 9, 12, 2, 0, 0) }),
   }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -68,8 +74,11 @@ export function world(on: On, seed: { store?: Record<string, unknown> } = {}): W
   on('ui.log', () => ({ value: undefined }))
   const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
   // An empty queue answers as an overloaded API: the feature's failure path
-  on('model.complete', ($, e) => {
+  on('model.complete', async ($, e) => {
     w.asked.push({ system: e.system, prompt: e.prompt })
+    if (w.replyMs > 0) {
+      await w.clock.sleep(w.replyMs)
+    }
     const text = w.replies.shift()
     return text === undefined
       ? { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'server_error', usage } }
@@ -81,7 +90,13 @@ export function world(on: On, seed: { store?: Record<string, unknown> } = {}): W
     w.prompt = { text: e.text, cursor: e.text.length }
     return { isFilled: true, text: e.text, cursor: e.text.length }
   })
-  on('prompt.submit', ($, e) => {
+  // The person's Enter while Claude works is queued at once; a plugin's prompt
+  // runs once the session is idle, so its call resolves at the turn's end (P12)
+  on('prompt.submit', async ($, e) => {
+    const endsAt = w.turnEndsAt
+    if (e.origin.kind === 'plugin' && endsAt !== null && endsAt > w.clock.now()) {
+      await w.clock.sleep(endsAt - w.clock.now())
+    }
     w.submitted.push(e.text)
     return { text: e.text }
   })

@@ -6,6 +6,7 @@ import { rowFailure, strictBlocked, verifyFailure } from '../../core/copy/band'
 import { parseLeadingCommand, judgedText } from '../../core/text/command'
 import { bandMode, isEnglishMessage, shouldBlock } from '../../core/text/lang'
 import { diffMarks } from '../../core/text/diff'
+import { visibleText } from '../../core/text/mask'
 import { protect, restore, verify } from '../../core/text/protect'
 import { localDate } from '../../core/time'
 import { run } from '../../services/translate'
@@ -14,7 +15,7 @@ import type { Host } from '../../host'
 import { recordSent } from '../stats/record'
 import { keepDraft } from '../wordbook/drafts'
 import { EMPTY_BAND } from './empty'
-import { decideCtrlA, decidePause, freshDraft, wayOf } from './model'
+import { decideCtrlA, decidePause, freshDraft, isTypingAlong, wayOf } from './model'
 import type { Answer, Draft } from './model'
 
 // The band above the prompt (F1 to F4): watches the Prompt through
@@ -27,9 +28,22 @@ import type { Answer, Draft } from './model'
 /** Where a tip-of-the-day was last shown, so it shows once a day (F1) */
 const TIP_KEY = 'flag/tipDate'
 
+/**
+ * Whether the Prompt's text and what Enter sent are one message: the
+ * submitted text has long pastes expanded where the Prompt shows their
+ * placeholders, and both are left out of what is compared.
+ */
+const isSameMessage = (inPrompt: string, sent: string) => visibleText(inPrompt).trim() === visibleText(sent).trim()
+
 export type Band = ReturnType<typeof createBand>
 
-export function createBand(host: Host) {
+export function createBand(
+  host: Host,
+  deps: {
+    /** F9: the selection line goes when a message is sent, a message sent for the person too (D3) */
+    closePick: () => Promise<void>
+  },
+) {
   let draft: Draft = freshDraft()
   /** The Prompt's text as the last edit left it */
   let promptText = ''
@@ -154,6 +168,9 @@ export function createBand(host: Host) {
     // F15: the words the correction changed or added, marked; none on ✓
     const marks = mode === 'correct' && !outcome.isOk ? diffMarks(text, target) : []
     const showTip = mode === 'translate' && (view.showTip || (await isTipDue()))
+    if (showTip) {
+      draft.sawTip = true
+    }
     const got = outcome
     await setView(band => ({
       ...band,
@@ -181,9 +198,12 @@ export function createBand(host: Host) {
     if (filled.isFilled) {
       promptText = text
       draft.inserted = { text, mode }
+      draft.hasReplaced = true
       if (mode === 'translate') {
         draft.usedTranslation = true
       }
+      // F4: the hint goes, and with it a 仍然发送 that let the text through
+      draft.letThrough = false
       await setView(band => ({ ...band, blocked: null }))
     }
   }
@@ -193,7 +213,10 @@ export function createBand(host: Host) {
     if (filled.isFilled) {
       promptText = ''
       draft.inserted = null
+      // What goes out now is typed along, not put in (F13 › 照着敲)
+      draft.usedTranslation = false
       draft.retyping = true
+      draft.letThrough = false
       await setView(band => ({ ...band, blocked: null }))
     }
   }
@@ -226,17 +249,29 @@ export function createBand(host: Host) {
     const got = await request(text, mode)
     const presses = draft.pendingCtrlA
     draft.pendingCtrlA = 0
-    if (!got) {
+    // F15: ✓ puts nothing in and empties nothing, at one press or two
+    if (!got || got.isOk) {
       return
     }
     if (presses >= 2) {
       await empty()
       return
     }
-    // F15: ✓ puts nothing in
-    if (got.verified && !got.isOk) {
+    if (got.verified) {
       await put(got.target, mode, text)
     }
+  }
+
+  /** The message is gone, sent or let go: the band starts over for the next one (F1) */
+  async function forget() {
+    pause?.cancel()
+    slot.cancel()
+    draft = freshDraft()
+    answer = null
+    failedText = null
+    blockedText = null
+    promptText = ''
+    await setView(() => EMPTY_BAND)
   }
 
   return {
@@ -259,23 +294,34 @@ export function createBand(host: Host) {
         switch (action.kind) {
           case 'replace':
             draft.inserted = { text: action.text, mode: action.mode }
+            draft.hasReplaced = true
             if (action.mode === 'translate') {
               draft.usedTranslation = true
             }
+            draft.letThrough = false
             promptText = action.text
             void setView(band => ({ ...band, blocked: null }))
             return { text: action.text, cursor: action.text.length }
           case 'clear':
             draft.inserted = null
+            draft.usedTranslation = false
             draft.retyping = true
+            draft.letThrough = false
             promptText = ''
             void setView(band => ({ ...band, blocked: null }))
             return { text: '', cursor: 0 }
           case 'clearWhenDone':
             draft.pendingCtrlA += 1
+            if (!action.isHeld) {
+              break
+            }
             return { text: e.text, cursor: e.cursor }
           case 'request':
             void catchUpAndPut(e.text, action.mode).catch(error => host.ui.debug(`band Control+A: ${String(error)}`))
+            // Direct English: the caret goes to the start meanwhile, where a ✓ leaves it (F15)
+            if (!action.isHeld) {
+              break
+            }
             return { text: e.text, cursor: e.cursor }
           case 'pass':
             break
@@ -286,6 +332,15 @@ export function createBand(host: Host) {
         const wasInserted = draft.inserted !== null && result.text !== draft.inserted.text
         if (wasInserted) {
           draft.inserted = null
+        }
+        // The Prompt emptied while the band holds a result: by hand (Control+U), or with no
+        // edit of its own (Enter held back, Esc Esc), so this one starts from nothing. As
+        // after F3, what is typed now goes along the band (F1 › 照着敲时横条不动, F13 ›
+        // 照着敲); ↑ brings no empty start
+        const isEmptied = result.text === '' || (e.text === '' && promptText !== '')
+        if (isEmptied && (answer !== null || view.isPending)) {
+          draft.usedTranslation = false
+          draft.retyping = true
         }
         promptText = result.text
         if (view.blocked && !view.blocked.isLetThrough) {
@@ -309,17 +364,24 @@ export function createBand(host: Host) {
       const isLetThrough = draft.letThrough
       const isBlocked = settings.strict && isDrawn && !isLetThrough && shouldBlock(judged)
       if (isBlocked) {
-        const typed = promptText
+        // ↑, Control+_ and Ctrl+R bring a text back without an edit (P09): the last edit's may be another's
+        const edited = promptText
         blockedText = e.text
         const hasImage = (e.attachments ?? []).some(item => item.type === 'image')
         host.clock.after(0, () => {
           void (async () => {
             pause?.cancel()
+            // Judged afresh from here; where the Prompt came back empty, the next edit starts
+            // from nothing and onEdit takes it as typing along
             draft.retyping = false
             // The terminal keeps the text in the Prompt; where it came back empty, ↑ has it
             const box = await host.prompt.read()
             const isCleared = box.text === ''
-            promptText = box.text
+            // What was sent as the Prompt held it, placeholders and all: the Prompt that kept it,
+            // or else the last edit's text where that was this message, or else what was sent
+            const typed = !isCleared ? box.text : isSameMessage(edited, e.text) ? edited : e.text
+            // Emptied, the Prompt still counts as holding the text: ↑ brings it back unchanged (F4)
+            promptText = typed
             await setView(band => ({ ...band, blocked: { hasImage, serviceDown: false, isCleared, isLetThrough: false } }))
             // F4: the band catches up with what was sent, if it had not
             // English with Chinese in it: the correction, the Chinese put into English,
@@ -348,14 +410,17 @@ export function createBand(host: Host) {
     async replace() {
       const box = await host.prompt.read()
       const text = box.text
-      // An empty Prompt, or English typed along the band: the band's text goes in as it is
-      if (answer && (text === '' || text === answer.text || draft.retyping)) {
+      const typedMode = bandMode(judgedText(text, []) ?? '')
+      // An empty Prompt, or mostly English typed along the band: the band's text goes in as it is
+      // (F2); new text in the source language is translated first, as at a pause
+      const isAlong = typedMode !== 'translate' && isTypingAlong(draft)
+      if (answer && (text === '' || text === answer.text || isAlong)) {
         if (answer.verified && !answer.isOk) {
           await put(answer.target, answer.mode)
         }
         return
       }
-      const mode = bandMode(judgedText(text, []) ?? '') === 'correct' ? 'correct' : 'translate'
+      const mode = typedMode === 'correct' ? 'correct' : 'translate'
       const got = await request(text, mode)
       if (got?.verified && !got.isOk) {
         await put(got.target, mode, text)
@@ -374,20 +439,27 @@ export function createBand(host: Host) {
       const box = await host.prompt.read()
       if (box.text === '' && blockedText) {
         const text = blockedText
-        blockedText = null
-        // A plugin's prompt: no hook of ours sees it, so it is neither held back nor counted
-        await host.prompt.submit({ text, asUser: true })
-        pause?.cancel()
-        slot.cancel()
-        draft = freshDraft()
-        answer = null
-        failedText = null
-        await setView(() => EMPTY_BAND)
+        const { sawTip } = draft
+        // A plugin's prompt, our own hooks pass it on: neither held back nor counted. While
+        // Claude works it waits for the turn's end (P12), so the band does not wait for it (D3)
+        void host.prompt.submit({ text, asUser: true }).catch(error => host.ui.debug(`send anyway: ${String(error)}`))
+        await forget()
+        await deps.closePick()
+        if (sawTip) {
+          await host.store.set(TIP_KEY, await today())
+        }
+        return
+      }
+      // Nothing in the Prompt to let through
+      if (box.text === '') {
         return
       }
       draft.letThrough = true
       await setView(band => ({ ...band, blocked: band.blocked && { ...band.blocked, isLetThrough: true } }))
     },
+
+    /** /clear, /resume and /branch: Claude Code emptied what the band draws, and the message went with it */
+    reset: forget,
 
     /** What the band answers, for the view's 朗读 */
     targetText: () => (answer ? answer.target : null),
@@ -402,16 +474,10 @@ export function createBand(host: Host) {
         await keepDraft(host, sent.judged, { zh: sent.draft.lastSource, sawTranslation: sent.draft.sawTranslation })
       }
     }
-    if (view.showTip) {
+    // The tip showed for this message, whatever the band shows at the end (F1)
+    if (sent.draft.sawTip) {
       await host.store.set(TIP_KEY, date)
     }
-    pause?.cancel()
-    slot.cancel()
-    draft = freshDraft()
-    answer = null
-    failedText = null
-    blockedText = null
-    promptText = ''
-    await setView(() => EMPTY_BAND)
+    await forget()
   }
 }

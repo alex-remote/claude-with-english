@@ -10,8 +10,12 @@ export type Draft = {
   inserted: { text: string; mode: 'translate' | 'correct' } | null
   /** A translation showed for this message (F13: 照着敲 rather than 直接写) */
   sawTranslation: boolean
-  /** What was sent came from F2's replace, edited or not (F13: 用译文) */
+  /** What is in the Prompt came from F2's replace, edited or not (F13: 用译文); emptying it ends that */
   usedTranslation: boolean
+  /** F2 or F15 put text in for this message: English edited after it is no longer written directly */
+  hasReplaced: boolean
+  /** The day's tip showed for this message: once it is sent, the tip waits for the next day (F1) */
+  sawTip: boolean
   /** The source text of the last translation (F12 keeps it beside what was sent) */
   lastSource: string | null
   /**
@@ -30,11 +34,20 @@ export const freshDraft = (): Draft => ({
   inserted: null,
   sawTranslation: false,
   usedTranslation: false,
+  hasReplaced: false,
+  sawTip: false,
   lastSource: null,
   retyping: false,
   pendingCtrlA: 0,
   letThrough: false,
 })
+
+/**
+ * The person types along the band rather than over something put in (F1 ›
+ * 照着敲时横条不动, F13 › 照着敲): after the Prompt was emptied, or with a
+ * translation shown and none of it put in.
+ */
+export const isTypingAlong = (draft: Draft): boolean => draft.retyping || (draft.sawTranslation && !draft.usedTranslation)
 
 /** What the band's two rows answer, when they answer the Prompt as it stands. */
 export type Answer = {
@@ -96,10 +109,15 @@ export type CtrlAAction =
   | { kind: 'replace'; text: string; mode: 'translate' | 'correct' }
   /** Empty the Prompt (F3) */
   | { kind: 'clear' }
-  /** Hold the key: ask for the newest text first, then put it in */
-  | { kind: 'request'; mode: 'translate' | 'correct' }
-  /** A second press while the first waits: empty the Prompt once the result is in */
-  | { kind: 'clearWhenDone' }
+  /**
+   * Ask for the newest text first, then put it in. Held: the key waits for
+   * the result (a Han character in the Prompt); otherwise it is the editor's
+   * own meanwhile, so a correction that comes back ✓ leaves the caret at the
+   * start (F15)
+   */
+  | { kind: 'request'; mode: 'translate' | 'correct'; isHeld: boolean }
+  /** A second press while the first waits: empty the Prompt once the result is in, unless it is ✓ */
+  | { kind: 'clearWhenDone'; isHeld: boolean }
 
 /**
  * Control+A (快捷键和按钮 › 什么时候生效): a Han character in the Prompt
@@ -115,8 +133,9 @@ export function decideCtrlA(input: {
   isPending: boolean
 }): CtrlAAction {
   const { judged, text, draft, answer, isPending } = input
+  const isHeld = judged !== null && hasHan(judged)
   if (draft.pendingCtrlA > 0) {
-    return { kind: 'clearWhenDone' }
+    return { kind: 'clearWhenDone', isHeld }
   }
   if (draft.inserted && draft.inserted.text === text && text !== '') {
     return { kind: 'clear' }
@@ -126,15 +145,21 @@ export function decideCtrlA(input: {
   }
   const isCaughtUp = (mode: 'translate' | 'correct') =>
     answer !== null && answer.text === text && answer.mode === mode && !isPending
+  const isUsable = (got: Answer | null): got is Answer => got !== null && got.verified && !got.isOk
   if (hasHan(judged)) {
     const mode = bandMode(judged) === 'correct' ? 'correct' : 'translate'
-    if (isCaughtUp(mode) && answer && answer.verified && !answer.isOk) {
+    if (isCaughtUp(mode) && isUsable(answer)) {
       return { kind: 'replace', text: answer.target, mode }
     }
-    return { kind: 'request', mode }
+    // Mostly English typed along the band, a Chinese word in it: the band holds and its text goes in (F2)
+    if (mode === 'correct' && isTypingAlong(draft) && !isPending && isUsable(answer)) {
+      return { kind: 'replace', text: answer.target, mode: answer.mode }
+    }
+    return { kind: 'request', mode, isHeld: true }
   }
   // Direct English that nothing was put in for yet, and no translation to type along
-  const isDirect = bandMode(judged) === 'correct' && !draft.sawTranslation && !draft.retyping && draft.inserted === null
+  const isDirect =
+    bandMode(judged) === 'correct' && !draft.sawTranslation && !draft.retyping && draft.inserted === null && !draft.hasReplaced
   if (!isDirect) {
     return { kind: 'pass' }
   }
@@ -142,9 +167,9 @@ export function decideCtrlA(input: {
     if (answer.isOk) {
       return { kind: 'pass' }
     }
-    return answer.verified ? { kind: 'replace', text: answer.target, mode: 'correct' } : { kind: 'request', mode: 'correct' }
+    return answer.verified ? { kind: 'replace', text: answer.target, mode: 'correct' } : { kind: 'request', mode: 'correct', isHeld: false }
   }
-  return { kind: 'request', mode: 'correct' }
+  return { kind: 'request', mode: 'correct', isHeld: false }
 }
 
 /** How a message sent in English was written (F13 › 写法). */

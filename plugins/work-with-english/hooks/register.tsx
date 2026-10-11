@@ -177,7 +177,11 @@ export const register: Register = on => {
       },
     }
     host = bound
-    band = createBand(bound)
+    band = createBand(bound, {
+      closePick: async () => {
+        await picker?.close()
+      },
+    })
     const speakerOf = createSpeaker(bound)
     speaker = speakerOf
     const repliesOf = createReplies(bound)
@@ -253,6 +257,8 @@ export const register: Register = on => {
   // /clear, /resume and /branch reset $.state and start no session.start
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
     replies?.forgetLooked()
+    // The band's own record of the message being written goes with what it drew
+    await band?.reset().catch(error => host?.ui.debug(`band reset: ${String(error)}`))
     if (host) {
       await loadSettings(host).catch(error => host?.ui.debug(`settings: ${String(error)}`))
     }
