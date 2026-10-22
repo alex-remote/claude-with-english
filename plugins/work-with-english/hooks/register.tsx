@@ -33,6 +33,7 @@ import type { Picker } from './features/pick/controller'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
 import { askLines, askRows, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
+import { descriptionOf, toolLineView } from './features/reply/toolLine'
 import { replyOnceView, replyView, wholeToggle, withTranslations } from './features/reply/view'
 import type { ReplyPart } from './features/reply/view'
 import { createSpeaker } from './features/speak/controller'
@@ -510,6 +511,32 @@ export const register: Register = on => {
     }
     return tasksView($.ui.resolve(e), shown, text => paras.get(stepBlock(text).hash) ?? NO_PARA)
   })
+  // F6 on the desktop: the description Claude gave a call, translated for its row; the call goes on unchanged
+  on('tool.call', async ($, e, next) => {
+    const description = e.agentId === undefined ? descriptionOf(e) : null
+    if (description !== null && translatable(stepBlock(description))) {
+      void replies?.translateToolLine(description).catch(error => host?.ui.debug(`tool line: ${String(error)}`))
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // F6 on the desktop: a call's row with its description's translation under it, folded or unfolded
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    const description = e.surface === 'terminal' ? null : descriptionOf(e.props.input)
+    if (description === null || !translatable(stepBlock(description))) {
+      return next(e)
+    }
+    const block = stepBlock(description)
+    const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
+    if (para.status === 'none') {
+      replies?.note(block.hash)
+    } else if (para.status === 'pending') {
+      replies?.noteStale(block)
+    }
+    const drawn = await next(e)
+    return drawn ? toolLineView($.ui.resolve(e), drawn, para) : drawn
+  })
+
   on('tool.call', { tool: ['AskUserQuestion', 'ExitPlanMode'] }, async ($, e, next) => {
     const current = e.agentId === undefined ? replies : null
     current?.onWait()
@@ -576,7 +603,9 @@ export const register: Register = on => {
     const current = replies
     const blocks = segment(e.props.text)
     // 桌面端: the summary card under the turn's last reply block, translated at its end
-    const ending = e.surface === 'terminal' ? NO_CARD : await read($, memberOf(cardAtom, { requestId: hash(e.props.text) }))
+    const kept = e.surface === 'terminal' ? NO_CARD : await read($, memberOf(cardAtom, { requestId: hash(e.props.text) }))
+    // A card another version of the plugin kept in this session, in a shape this one does not know, is left out
+    const ending = Array.isArray(kept.buttons) ? kept : NO_CARD
     if (!current || (!blocks.some(translatable) && ending.recap === '')) {
       return next(e)
     }

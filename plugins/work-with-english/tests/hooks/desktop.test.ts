@@ -152,6 +152,44 @@ describe('the desktop app', () => {
     expect([...w.files.keys()].filter(path => path.includes('/stats/'))).toEqual([])
   })
 
+  test('a call’s description is translated under its row on the desktop; not in the terminal, nor with 自动翻译回复 off', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on)
+    on('tool.call', () => ({ result: 'done' }))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['Verified the workflow'] }))
+    await start($, w, 'desktop')
+    w.replies.push(JSON.stringify(['核对工作流']))
+    await $.tool.call({ tool: 'Bash', command: 'gh run view', description: 'Verify the workflow' } as unknown as Parameters<typeof $.tool.call>[0])
+    await w.clock.settle()
+    expect(w.asked.length).toBe(1)
+
+    const row = (surface: 'desktop' | 'terminal') =>
+      $.ui.mount({
+        plugin: 'work-with-english',
+        component: 'ToolUse',
+        requestId: 'toolu_1',
+        viewport: { columns: 110, rows: 40, isFullscreen: true },
+        props: { tool_use_id: 'toolu_1', tool: 'Bash', input: { command: 'gh run view', description: 'Verify the workflow' }, isRunning: false, isErrored: false, isInterrupted: false },
+        surface,
+      } as unknown as Parameters<typeof $.ui.mount>[0])
+    expect(await (await row('desktop')).find({ type: 'Text', text: '核对工作流' })).toBeDefined()
+    expect(await (await row('terminal')).find({ type: 'Text', text: '核对工作流' })).toBeUndefined()
+
+    // A call with no description, or one in Chinese, asks nothing
+    await $.tool.call({ tool: 'Read', file_path: '/tmp/a.ts' } as unknown as Parameters<typeof $.tool.call>[0])
+    await $.tool.call({ tool: 'Bash', command: 'ls', description: '列出文件' } as unknown as Parameters<typeof $.tool.call>[0])
+    await w.clock.settle()
+    expect(w.asked.length).toBe(1)
+  })
+
+  test('自动翻译回复 off: a call’s description is not asked for', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on, { store: { 'settings/autoReply': 'off' } })
+    on('tool.call', () => ({ result: 'done' }))
+    await start($, w, 'desktop')
+    await $.tool.call({ tool: 'Bash', command: 'gh run view', description: 'Verify the workflow' } as unknown as Parameters<typeof $.tool.call>[0])
+    await w.clock.settle()
+    expect(w.asked.length).toBe(0)
+  })
+
   test('a message that only starts with the letters goes on as any other', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     const opened = settingsPane(on)

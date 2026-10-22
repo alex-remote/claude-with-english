@@ -10,6 +10,7 @@ import { readJson, writeJson } from '../../services/files'
 import { run } from '../../services/translate'
 import type { Host } from '../../host'
 import { addToDay } from '../stats/record'
+import { stepBlock } from '../tasks/plan'
 import { askLines, blockOfLine, planOf } from './planAsk'
 
 // F6 回复译文: collects the main conversation's reply blocks as they are
@@ -264,6 +265,14 @@ export function createReplies(host: Host) {
       }
       const blocks = askLines(questions).map(blockOfLine)
       await translateBlock({ text: '', blocks }, true)
+    },
+
+    /** F6 on the desktop: the description of a tool call, as its row shows it; asked only while replies translate on their own */
+    async translateToolLine(text: string) {
+      const settings = await host.state.settings.get()
+      if (settings.readingMode === 'paragraph' && settings.autoReply !== 'off') {
+        await translateBlock({ text, blocks: [stepBlock(text)] }, true)
+      }
     },
 
     /** F16 任务: a task list's steps, each a paragraph of its own; one translated before is not asked again */
