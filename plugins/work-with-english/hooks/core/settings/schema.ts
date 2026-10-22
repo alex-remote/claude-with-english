@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: WweSettings = {
   autoReplyCount: 1,
   autoReplyWhen: 'written',
   autoPlanAsk: true,
+  askLayout: 'one',
   replyContext: true,
   translateConcurrency: 4,
   speechService: 'system',
@@ -83,6 +84,7 @@ const CHOICES: Partial<Record<SettingKey, readonly string[]>> = {
   readingMode: ['paragraph', 'select'],
   autoReply: ['all', 'last', 'off'],
   autoReplyWhen: ['written', 'turnEnd'],
+  askLayout: ['one', 'all'],
   speechService: ['system', 'openai', 'elevenlabs'],
   cardLanguage: ['target', 'source'],
 }

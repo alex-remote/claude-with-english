@@ -85,6 +85,7 @@ describe('设置的默认值（功能地图“设置”表的“默认”列）'
     expect(shown('autoReply')).toBe('全部')
     expect(DEFAULT_SETTINGS.autoReplyCount).toBe(1)
     expect(shown('autoPlanAsk')).toBe('开')
+    expect(shown('askLayout')).toBe('逐项展示')
     expect(shown('speechService')).toBe('系统声音')
     expect(shown('voiceSystem')).toBe('系统默认')
     expect(shown('voiceOpenai')).toBe('coral')

@@ -27,6 +27,7 @@ export type ControlKey =
   | 'reply-count'
   | 'concurrency'
   | 'auto-reply-when'
+  | 'ask-layout'
   | 'anki-deck'
   | 'claude-model'
   | 'model-id'

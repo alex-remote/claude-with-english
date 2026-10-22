@@ -439,6 +439,17 @@ describe('设置 Pane', () => {
     expect(ui.find({ key: 'auto-reply-when' })).toBeUndefined()
   })
 
+  test('多个问题的译文：只在“自动翻译计划和提问”开时出现，默认“逐项展示”，可以改成“展示全部”', async () => {
+    const { fake, ui } = await opened()
+    await ui.press('tab-reading')
+    expect(ui.value('ask-layout')).toBe('one')
+    await ui.select('ask-layout', 'all')
+    expect(fake.store.get('settings/askLayout')).toBe('all')
+    expect(fake.toasts).toEqual(['已保存：多个问题的译文 展示全部'])
+    await ui.press('auto-plan-ask')
+    expect(ui.find({ key: 'ask-layout' })).toBeUndefined()
+  })
+
   test('阅读方式：选划选模式后“自动翻译回复”不显示，“自动翻译计划和提问”仍在', async () => {
     const { fake, ui } = await opened()
     await ui.press('tab-reading')

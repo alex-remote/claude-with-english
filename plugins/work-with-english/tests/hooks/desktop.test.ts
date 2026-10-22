@@ -111,7 +111,7 @@ describe('the desktop app', () => {
     expect(
       await ui.find({
         type: 'Text',
-        text: `${reply}\n\n> 探针已删除。\n\n---\n\n**下方卡片的译文**\n\n> 插件没有改动。\n>\n> 问题：要发布吗？\n> - 发布，点击后发送：发布 0.1.5。\n> - 先不发`,
+        text: `${reply}\n\n> 探针已删除。\n\n---\n\n> 插件没有改动。\n>\n> 问题：要发布吗？\n>\n> - 发布，点击后发送：发布 0.1.5。\n> - 先不发`,
       }),
     ).toBeDefined()
 

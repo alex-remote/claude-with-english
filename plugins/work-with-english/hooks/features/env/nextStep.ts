@@ -1,5 +1,5 @@
 import type { WweCard, WweCardButton, WwePara } from '../../../types'
-import { CARD_ASK, CARD_SENDS, CARD_TITLE } from '../../core/copy/card'
+import { CARD_ASK, CARD_SENDS } from '../../core/copy/card'
 import { progressInline } from '../../core/copy/common'
 
 // 运行环境 › 桌面端: the summary card the desktop app draws when Claude calls
@@ -51,18 +51,29 @@ export function shownOf(para: WwePara): string | null {
 
 /**
  * A card's translation, the summary card's and the question dialog's alike:
- * a rule and a title that set it apart from the reply's own translations,
- * then its paragraphs as one quote ("问题：…" with "- 选项" lines under it).
+ * a rule that sets it apart from the reply's own translations, then its
+ * paragraphs as one quote ("问题：…", a blank row, and the list under it).
  */
-export function cardSection(paragraphs: readonly string[]): string {
-  const quote = paragraphs.map(paragraph => paragraph.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
-  return `---\n\n**${CARD_TITLE}**\n\n${quote}`
+export function cardSection(paragraphs: readonly (readonly string[])[]): string {
+  return `${CARD_RULE}\n\n${cardQuoteOf(paragraphs)}`
 }
 
+/** The rule a card's translation starts with */
+export const CARD_RULE = '---'
+
+const quoted = (row: string) => row.split('\n').map(part => (part === '' ? '>' : `> ${part}`)).join('\n')
+
 /**
- * The card's translation for the end of the reply above it: a rule and a
- * title that set it apart from the reply's own translations, then as a quote
- * the recap's, 问题, and each button with what a click sends. Null when none
+ * The paragraphs as one quote, a blank quote row between them: each its
+ * first row, then the list under it ("- " or "1. " lines) after a blank row.
+ */
+export const cardQuoteOf = (paragraphs: readonly (readonly string[])[]) =>
+  paragraphs.map(([head = '', ...items]) => (items.length > 0 ? [head, '', ...items] : [head]).map(quoted).join('\n')).join('\n>\n')
+
+/**
+ * The card's translation for the end of the reply above it: a rule that
+ * sets it apart from the reply's own translations, then as a quote the
+ * recap's, 问题, and each button with what a click sends. Null when none
  * of it is translated (a card not in English).
  */
 export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): string | null {
@@ -76,8 +87,5 @@ export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): str
   const buttons = card.buttons.map(({ label, message }) =>
     message === label ? `- ${shown(label)}` : `- ${shown(label)}${CARD_SENDS}${shown(message)}`,
   )
-  return cardSection([
-    ...(recap === null ? [] : [recap]),
-    ...(ask === null ? [] : [[`${CARD_ASK}${ask}`, ...buttons].join('\n')]),
-  ])
+  return cardSection([...(recap === null ? [] : [[recap]]), ...(ask === null ? [] : [[`${CARD_ASK}${ask}`, ...buttons]])])
 }

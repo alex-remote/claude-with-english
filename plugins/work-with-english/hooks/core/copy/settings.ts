@@ -49,6 +49,7 @@ export const ITEM_NAMES: Record<SettingKey, string> = {
   autoReplyCount: '自动翻译回复',
   autoReplyWhen: '翻译时机',
   autoPlanAsk: '自动翻译计划和提问',
+  askLayout: '多个问题的译文',
   replyContext: '附带前一段',
   translateConcurrency: '同时翻译的请求数',
   speechService: '朗读服务',
@@ -115,7 +116,7 @@ export const DESCRIPTIONS = {
     '两种方式下都可以双击单词查词。在桌面端，选中文字后需按 ⌘C 复制，横条上才会显示查词和翻译。',
   autoReply:
     'Claude 的回复默认全部自动翻译，每条写完后就翻，也可以改成每轮做完后再翻。只想看结论时，可以改成每轮最后几条，在这一轮做完后翻；其他段落点“翻译”再翻。',
-  autoPlanAsk: '自动翻译计划模式里的计划，以及 Claude 提问时的问题和选项。两种阅读方式下都起作用。',
+  autoPlanAsk: '自动翻译计划模式里的计划，以及 Claude 提问时的问题和选项。两种阅读方式下都起作用。桌面端一次问多个问题时，默认逐项展示，点“问题 1”“问题 2”切换，也可以展示全部。',
   replyContext: '回复和计划按段翻译，每段单独请求。打开后每段附带前一段，用词和指代更连贯，用量稍多。',
   translateConcurrency: '同时发出的翻译请求最多几个，1 到 8。调大翻得更快，但更容易触发服务的频率限制。',
   speechOnline: '在线语音更自然，读到一半可以停止。按字数收费，读过的内容会缓存，再读不重复收费。声音由 AI 生成。',
@@ -190,6 +191,12 @@ export const AUTO_REPLY_LABELS: Record<WweSettings['autoReply'], string> = {
 export const AUTO_REPLY_WHEN_LABELS: Record<WweSettings['autoReplyWhen'], string> = {
   written: '每条写完后',
   turnEnd: '每轮做完后',
+}
+
+/** 多个问题的译文 under 自动翻译计划和提问 */
+export const ASK_LAYOUT_LABELS: Record<WweSettings['askLayout'], string> = {
+  one: '逐项展示',
+  all: '展示全部',
 }
 
 /** The unit after the count field of 每轮最后 */

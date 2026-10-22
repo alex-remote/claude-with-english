@@ -8,7 +8,7 @@ import type { WwePara } from '../../types'
 // translation for the end of the reply above it.
 
 const done = (zh: string): WwePara => ({ status: 'done', zh, error: null, shown: true })
-const TITLE = '---\n\n**下方卡片的译文**\n\n'
+const RULE = '---\n\n'
 
 describe('the summary card', () => {
   test('its recap, its question and its reply buttons with what each sends; an app action’s button is left out', () => {
@@ -37,7 +37,7 @@ describe('the summary card', () => {
 
   test('a recap alone is quoted alone; a card not in English adds nothing', () => {
     const card = { recap: 'Done.', ask: null, buttons: [] }
-    expect(cardQuote(card, () => done('完成。'))).toBe(`${TITLE}> 完成。`)
+    expect(cardQuote(card, () => done('完成。'))).toBe(`${RULE}> 完成。`)
     expect(cardQuote(card, () => NO_PARA)).toBeNull()
   })
 
@@ -57,7 +57,7 @@ describe('the summary card', () => {
       'Archive the stale setup session.': done('归档过期的设置会话。'),
     }
     expect(cardQuote(card, text => zh[text] ?? NO_PARA)).toBe(
-      `${TITLE}> 完成。\n>\n> 问题：要归档吗？\n> - 归档，点击后发送：归档过期的设置会话。\n> - Keep it`,
+      `${RULE}> 完成。\n>\n> 问题：要归档吗？\n>\n> - 归档，点击后发送：归档过期的设置会话。\n> - Keep it`,
     )
   })
 })

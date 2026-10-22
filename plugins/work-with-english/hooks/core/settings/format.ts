@@ -1,6 +1,7 @@
 import type { WweSettings } from '../../../types'
 import { savedToast } from '../copy/common'
 import {
+  ASK_LAYOUT_LABELS,
   AUTO_REPLY_LABELS,
   AUTO_REPLY_WHEN_LABELS,
   CONCURRENCY_UNIT,
@@ -52,6 +53,8 @@ export function formatValue<K extends SettingKey>(
       return `${v as number} ${CONCURRENCY_UNIT}`
     case 'autoReplyWhen':
       return AUTO_REPLY_WHEN_LABELS[v as WweSettings['autoReplyWhen']]
+    case 'askLayout':
+      return ASK_LAYOUT_LABELS[v as WweSettings['askLayout']]
     case 'readingMode':
       return READING_MODE_LABELS[v as WweSettings['readingMode']]
     case 'translateService':

@@ -2,6 +2,7 @@ import type { SelectOption } from 'claude-code'
 
 import type { WwePane, WweSettings, WweSettingsView } from '../../../../types'
 import {
+  ASK_LAYOUT_LABELS,
   AUTO_REPLY_LABELS,
   AUTO_REPLY_WHEN_LABELS,
   CACHE_CLEAR,
@@ -53,6 +54,14 @@ const AUTO_REPLY_WHEN_ORDER: readonly WweSettings['autoReplyWhen'][] = ['written
 const autoReplyWhenOptions = AUTO_REPLY_WHEN_ORDER.map(value => ({
   value,
   label: AUTO_REPLY_WHEN_LABELS[value] + (value === DEFAULT_SETTINGS.autoReplyWhen ? DEFAULT_SUFFIX : ''),
+}))
+
+/** 多个问题的译文's options, the default first and marked */
+const ASK_LAYOUT_ORDER: readonly WweSettings['askLayout'][] = ['one', 'all']
+
+const askLayoutOptions = ASK_LAYOUT_ORDER.map(value => ({
+  value,
+  label: ASK_LAYOUT_LABELS[value] + (value === DEFAULT_SETTINGS.askLayout ? DEFAULT_SUFFIX : ''),
 }))
 
 /** 朗读服务's options, each online one with its 朗读模型; one not configured can't be chosen (F8) */
@@ -281,6 +290,17 @@ export function readingPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
       </Box>
       <Box {...GROUP}>
         {switchRow(ui, 'auto-plan-ask', ITEM_NAMES.autoPlanAsk, settings.autoPlanAsk, () => actions.flip('autoPlanAsk'))}
+        {settings.autoPlanAsk && (
+          <Box paddingLeft={2}>
+            <Select
+              key={vm.key('ask-layout')}
+              label={ITEM_NAMES.askLayout}
+              value={settings.askLayout}
+              options={askLayoutOptions}
+              onSelect={value => actions.pick('askLayout', value)}
+            />
+          </Box>
+        )}
         {note(ui, DESCRIPTIONS.autoPlanAsk)}
       </Box>
       <Box {...GROUP}>

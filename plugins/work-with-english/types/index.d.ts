@@ -24,6 +24,8 @@ export type WweSettings = {
   autoReplyWhen: 'written' | 'turnEnd'
   /** F6: auto-translate plans and questions */
   autoPlanAsk: boolean
+  /** F6: a question dialog of several questions on the desktop: a tab each, one translation at a time, or all of them */
+  askLayout: 'one' | 'all'
   /** F6: each paragraph of a reply or a plan asked with the paragraph before it, for consistent terms */
   replyContext: boolean
   /** F7: at most this many translation requests out at once (1 to 8) */
@@ -312,6 +314,9 @@ export type WweStats = {
  */
 export type WweAsking = { blocks: { kind: string; text: string; hash: string }[] }
 
+/** F6: which question's translation a several-question dialog shows, by the dialog's tool_use_id */
+export type WweAskTab = { index: number }
+
 /** One reply button of the summary card: what it reads, and what a click sends as the person's message */
 export type WweCardButton = { label: string; message: string }
 
@@ -354,6 +359,7 @@ declare module 'claude-code' {
       card: StateFamily<WweCard>
       sent: StateFamily<WweCardSent>
       asking: WweAsking
+      askTab: StateFamily<WweAskTab>
     }
   }
 }

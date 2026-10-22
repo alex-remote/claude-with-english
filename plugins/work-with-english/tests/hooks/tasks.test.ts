@@ -82,3 +82,57 @@ describe('the 任务 pane', () => {
     expect(opened).toEqual(['wwe-tasks', 'wwe', 'wwe-tasks', 'wwe-tasks'])
   })
 })
+
+describe('a question dialog of several questions on the desktop', () => {
+  const DIALOG = {
+    plugin: 'work-with-english',
+    component: 'AskUserQuestion',
+    requestId: 'toolu-ask-1',
+    viewport: { columns: 120, rows: 40, isFullscreen: true },
+    surface: 'desktop',
+  } as const
+  const QUESTIONS = [
+    { question: 'Which budget?', header: 'Budget', options: [{ label: 'large', description: 'Matches the defaults' }, { label: 'small', description: 'Fewer agents' }], multiSelect: false },
+    { question: 'Accept task?', header: 'Task', options: [{ label: 'yes', description: 'Opens the pane' }, { label: 'no', description: 'Only by command' }], multiSelect: false },
+  ]
+
+  test('a tab for each question above the dialog; a press shows that question’s translation alone', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on)
+    on('tool.call', () => ({ result: 'Answered.' }))
+    // Claude Code's own dialog, which the tree holds once
+    on('ui.render', () => ({ type: 'engine', ref: 0 }))
+    await start($, w, 'desktop')
+
+    w.replies.push(JSON.stringify(['用哪种预算？', '大', '与默认设置一致', '小', '少用代理', '接受 task 吗？', '接受', '打开 Pane', '不接受', '只用命令']))
+    await $.tool.call({ tool: 'AskUserQuestion', questions: QUESTIONS } as unknown as Parameters<Engine['tool']['call']>[0])
+    await w.clock.settle()
+    const ui = await $.ui.mount({ ...DIALOG, props: { tool: 'AskUserQuestion', questions: QUESTIONS } })
+    expect(await ui.find({ type: 'Markdown', text: '> 用哪种预算？\n>\n> 1. 大：与默认设置一致\n> 2. 小：少用代理' })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: /接受 task/ })).toBeUndefined()
+
+    await ui.press({ key: 'ask-tab-1' })
+    expect(await ui.find({ type: 'Markdown', text: '> 接受 task 吗？\n>\n> 1. 接受：打开 Pane\n> 2. 不接受：只用命令' })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: /用哪种预算/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('多个问题的译文 set to 展示全部: every question at once, numbered, and no tabs', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on, { store: { 'settings/askLayout': 'all' } })
+    on('tool.call', () => ({ result: 'Answered.' }))
+    on('ui.render', () => ({ type: 'engine', ref: 0 }))
+    await start($, w, 'desktop')
+
+    w.replies.push(JSON.stringify(['用哪种预算？', '大', '与默认设置一致', '小', '少用代理', '接受 task 吗？', '接受', '打开 Pane', '不接受', '只用命令']))
+    await $.tool.call({ tool: 'AskUserQuestion', questions: QUESTIONS } as unknown as Parameters<Engine['tool']['call']>[0])
+    await w.clock.settle()
+    const ui = await $.ui.mount({ ...DIALOG, props: { tool: 'AskUserQuestion', questions: QUESTIONS } })
+    expect(
+      await ui.find({
+        type: 'Markdown',
+        text: '---\n\n> 问题 1/2：用哪种预算？\n>\n> 1. 大：与默认设置一致\n> 2. 小：少用代理\n>\n> 问题 2/2：接受 task 吗？\n>\n> 1. 接受：打开 Pane\n> 2. 不接受：只用命令',
+      }),
+    ).toBeDefined()
+    expect(await ui.findAll({ type: 'Button' })).toEqual([])
+    await ui.unmount()
+  })
+})

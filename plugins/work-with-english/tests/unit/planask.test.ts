@@ -45,14 +45,14 @@ describe('plan and question lines (F6 › 计划和提问)', () => {
   ])
   const parasOf = (lines: typeof fourOptions) => lines.map(line => done(line.isOption ? (line.number > 0 ? '选项' : longDesc) : longZh))
 
-  test('问题 and each option with its description after ：, all of it on the desktop', () => {
+  test('问题 and each option under its number in the dialog, its description after ：, all of it on the desktop', () => {
     expect(askFitted(fourOptions, parasOf(fourOptions), 'desktop')).toEqual([
-      [`问题：${longZh}`, ...[1, 2, 3, 4].map(() => `- 选项：${longDesc}`)],
+      [`问题：${longZh}`, ...[1, 2, 3, 4].map(n => `${n}. 选项：${longDesc}`)],
     ])
   })
 
   test('the terminal leaves out the options’ descriptions when all would not fit', () => {
-    expect(askFitted(fourOptions, parasOf(fourOptions), 'terminal')).toEqual([[`问题：${longZh}`, '- 选项', '- 选项', '- 选项', '- 选项']])
+    expect(askFitted(fourOptions, parasOf(fourOptions), 'terminal')).toEqual([[`问题：${longZh}`, '1. 选项', '2. 选项', '3. 选项', '4. 选项']])
   })
 
   test('questions too many for the rows keep what fits from the top; one too tall alone, or none translated, draws nothing', () => {
@@ -65,7 +65,7 @@ describe('plan and question lines (F6 › 计划和提问)', () => {
 
   test('a line not translated yet reads as 翻译中… or as its own words', () => {
     const paras = parasOf(fourOptions).map((para, i) => (i === 0 ? { ...para, status: 'pending' as const, zh: null } : i === 1 ? { ...para, status: 'none' as const, zh: null } : para))
-    expect(askFitted(fourOptions, paras, 'desktop')[0]?.slice(0, 2)).toEqual(['问题：翻译中…', `- Option 1：${longDesc}`])
+    expect(askFitted(fourOptions, paras, 'desktop')[0]?.slice(0, 2)).toEqual(['问题：翻译中…', `1. Option 1：${longDesc}`])
   })
 
   test('the plan comes with the result of the call that leaves plan mode', () => {
@@ -217,11 +217,9 @@ describe('the question dialog’s translation, as the summary card’s', () => {
   const zh = ['用哪种预算？', '大', '与默认设置一致', '小'].map((text): WwePara => ({ status: 'done', zh: text, error: null, shown: true }))
   const drawn = { type: 'Text', props: {}, children: ['the dialog'] } as unknown as Parameters<typeof askView>[3]
 
-  test('the desktop: a rule, the title and a quote above the dialog', () => {
+  test('the desktop: a rule and a quote above the dialog, a blank row before the options', () => {
     const tree = askView(UI, lines, zh, drawn, 'desktop') as unknown as Node
-    expect(all(tree).find(node => node.type === 'Markdown')?.props.text).toBe(
-      '---\n\n**下方卡片的译文**\n\n> 问题：用哪种预算？\n> - 大：与默认设置一致\n> - 小',
-    )
+    expect(all(tree).find(node => node.type === 'Markdown')?.props.text).toBe('---\n\n> 问题：用哪种预算？\n>\n> 1. 大：与默认设置一致\n> 2. 小')
   })
 
   test('a dialog that asks several questions numbers them: 问题 1/2, 问题 2/2', () => {
@@ -231,8 +229,46 @@ describe('the question dialog’s translation, as the summary card’s', () => {
     ])
     const zhTwo = ['用哪种预算？', '大', '接受 task 吗？', '接受'].map((text): WwePara => ({ status: 'done', zh: text, error: null, shown: true }))
     expect(askFitted(two, zhTwo, 'desktop')).toEqual([
-      ['问题 1/2：用哪种预算？', '- 大'],
-      ['问题 2/2：接受 task 吗？', '- 接受'],
+      ['问题 1/2：用哪种预算？', '1. 大'],
+      ['问题 2/2：接受 task 吗？', '1. 接受'],
+    ])
+  })
+
+  test('the desktop gives a dialog of several questions a tab each, under the rule, and the chosen one’s translation alone', () => {
+    const two = askLines([
+      { question: 'Which budget?', options: [{ label: 'large', description: 'Matches the defaults' }] },
+      { question: 'Accept task?', options: [{ label: 'yes' }] },
+    ])
+    const zhTwo = ['用哪种预算？', '大', '与默认设置一致', '接受 task 吗？', '接受'].map((text): WwePara => ({ status: 'done', zh: text, error: null, shown: true }))
+    const chosen: number[] = []
+    const tabsOf = (index: number) => ({ index, select: (k: number) => void chosen.push(k) })
+
+    const first = askView(UI, two, zhTwo, drawn, 'desktop', tabsOf(0)) as unknown as Node
+    // The tab names the question: no 问题： before it
+    expect(markdownsOf(first)).toEqual(['---', '> 用哪种预算？\n>\n> 1. 大：与默认设置一致'])
+    const buttons = all(first).filter(node => node.type === 'Button')
+    expect(buttons.map(node => [node.props.label, node.props.variant ?? 'plain'])).toEqual([
+      ['问题 1', 'primary'],
+      ['问题 2', 'plain'],
+    ])
+    ;(buttons[1]?.props.onPress as () => void)()
+    expect(chosen).toEqual([1])
+    expect(all(first).at(-1)?.children).toEqual(['the dialog'])
+
+    const second = askView(UI, two, zhTwo, drawn, 'desktop', tabsOf(1)) as unknown as Node
+    expect(markdownsOf(second)[1]).toBe('> 接受 task 吗？\n>\n> 1. 接受')
+    // A tab past the last, from a dialog asked again with fewer questions, shows the last
+    expect(markdownsOf(askView(UI, two, zhTwo, drawn, 'desktop', tabsOf(5)) as unknown as Node)[1]).toBe('> 接受 task 吗？\n>\n> 1. 接受')
+
+    // One question, or the terminal, draws as before: no tabs
+    expect(all(askView(UI, lines, zh, drawn, 'desktop', tabsOf(0)) as unknown as Node).some(node => node.type === 'Button')).toBe(false)
+    const terminal = askView(UI, two, zhTwo, drawn, 'terminal', tabsOf(1)) as unknown as Node
+    expect(all(terminal).some(node => node.type === 'Button')).toBe(false)
+    expect(all(terminal).filter(node => node.type === 'Text' && node.props.dimColor === true).map(node => node.children.join(''))).toEqual([
+      '问题 1/2：用哪种预算？',
+      '1. 大：与默认设置一致',
+      '问题 2/2：接受 task 吗？',
+      '1. 接受',
     ])
   })
 
@@ -241,8 +277,8 @@ describe('the question dialog’s translation, as the summary card’s', () => {
     expect(all(tree).some(node => node.type === 'Markdown')).toBe(false)
     expect(all(tree).filter(node => node.type === 'Text' && node.props.dimColor === true).map(node => node.children.join(''))).toEqual([
       '问题：用哪种预算？',
-      '- 大：与默认设置一致',
-      '- 小',
+      '1. 大：与默认设置一致',
+      '2. 小',
     ])
   })
 })

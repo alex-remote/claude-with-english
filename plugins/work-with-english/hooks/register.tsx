@@ -5,7 +5,7 @@ import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
 import { isTasksArg, tasksOpenedFromMessage } from './core/copy/tasks'
 import { DEFAULT_VIEW } from './core/settings/schema'
-import { EMPTY_BOOK, INITIAL_PANE, NOT_ASKING, NOT_SENT, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
+import { EMPTY_BOOK, FIRST_ASK_TAB, INITIAL_PANE, NOT_ASKING, NOT_SENT, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
 import { hash } from './core/hash'
 import { isWweCommand, wweArgsOf } from './core/text/command'
 import { segment } from './core/text/segment'
@@ -77,6 +77,7 @@ const tasksAtom = atom({ plugin: 'work-with-english', key: 'tasks' } as const, N
 const cardAtom = atom({ plugin: 'work-with-english', key: 'card' } as const, NO_CARD)
 const sentAtom = atom({ plugin: 'work-with-english', key: 'sent' } as const, NOT_SENT)
 const askingAtom = atom({ plugin: 'work-with-english', key: 'asking' } as const, NOT_ASKING)
+const askTabAtom = atom({ plugin: 'work-with-english', key: 'askTab' } as const, FIRST_ASK_TAB)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -230,6 +231,10 @@ export const register: Register = on => {
           update: (id, fn) => update($, memberOf(sentAtom, { requestId: id }), fn),
         },
         asking: { get: () => read($, askingAtom), update: fn => update($, askingAtom, fn) },
+        askTab: {
+          get: id => read($, memberOf(askTabAtom, { requestId: id })),
+          update: (id, fn) => update($, memberOf(askTabAtom, { requestId: id }), fn),
+        },
       },
     }
     host = bound
@@ -574,7 +579,13 @@ export const register: Register = on => {
       return next(e)
     }
     // Claude Code's dialog goes in exactly once, under the translation
-    return askView($.ui.resolve(e), lines, paras, await next(e), e.surface)
+    const dialog = e.requestId
+    const isTabbed = (await read($, settingsAtom)).askLayout === 'one'
+    const tab = await read($, memberOf(askTabAtom, { requestId: dialog }))
+    return askView($.ui.resolve(e), lines, paras, await next(e), e.surface, isTabbed ? {
+      index: tab.index,
+      select: index => void host?.state.askTab.update(dialog, () => ({ index })).catch(error => host?.ui.debug(`ask tab: ${String(error)}`)),
+    } : undefined)
   })
 
   // F6 › 计划和提问: the approved plan's translation under it

@@ -1,12 +1,13 @@
 import type { RenderElement } from 'claude-code'
 
 import type { WwePara } from '../../../types'
-import { CARD_ASK, askNumbered } from '../../core/copy/card'
+import { CARD_ASK, askNumbered, askTabLabel } from '../../core/copy/card'
 import { progressInline } from '../../core/copy/common'
 import { hash } from '../../core/hash'
 import { NO_PARA } from '../../core/state/defaults'
 import type { Block } from '../../core/text/segment'
-import { cardSection, shownOf } from '../env/nextStep'
+import { CARD_RULE, cardQuoteOf, cardSection, shownOf } from '../env/nextStep'
+import { tabStyle } from '../settings/controls'
 import { translationOf } from './view'
 import type { ReplyUi } from './view'
 
@@ -88,20 +89,27 @@ function columnsOf(text: string): number {
 /**
  * The dialog's translation in the summary card's form (features/env/nextStep):
  * per question a paragraph, "问题：" and its translation ("问题 1/2：" when the
- * dialog asks several, as it shows them one by one), then "- " and each
- * option's, with its description's after "：". A text not translated reads
- * as 翻译中…, why it failed, or its own words.
+ * dialog asks several, as it shows them one by one; nothing under a tab, which
+ * names it), then each option's under its number in the dialog, "1. ", with
+ * its description's after "：".
+ * A text not translated reads as 翻译中…, why it failed, or its own words.
  */
-export function askParagraphs(lines: readonly AskLine[], paras: readonly WwePara[], withDescriptions: boolean): string[][] {
+export function askParagraphs(
+  lines: readonly AskLine[],
+  paras: readonly WwePara[],
+  withDescriptions: boolean,
+  isTabbed = false,
+): string[][] {
   const paragraphs: string[][] = []
   const total = lines.filter(line => !line.isOption).length
   lines.forEach((line, i) => {
     const shown = shownOf(paras[i] ?? NO_PARA) ?? line.text
     const current = paragraphs.at(-1)
     if (!line.isOption || !current) {
-      paragraphs.push([`${total > 1 ? askNumbered(paragraphs.length + 1, total) : CARD_ASK}${shown}`])
+      const head = isTabbed ? '' : total > 1 ? askNumbered(paragraphs.length + 1, total) : CARD_ASK
+      paragraphs.push([`${head}${shown}`])
     } else if (line.number > 0) {
-      current.push(`- ${shown}`)
+      current.push(`${line.number}. ${shown}`)
     } else if (withDescriptions && current.length > 1) {
       current[current.length - 1] += `：${shown}`
     }
@@ -109,36 +117,35 @@ export function askParagraphs(lines: readonly AskLine[], paras: readonly WwePara
   return paragraphs
 }
 
-/** The rows the paragraphs take at 40 columns, each row after its quote or indent, and the rows around them */
-function rowsTaken(paragraphs: readonly (readonly string[])[], isTerminal: boolean): number {
-  const room = ASK_COLUMNS - 2
-  const rows = paragraphs.flat().reduce((sum, row) => sum + Math.max(1, Math.ceil(columnsOf(row) / room)), 0)
-  // The desktop's rule, title and the blank rows between them; a blank quote row between questions; the margin
-  return rows + (isTerminal ? 0 : 4) + (isTerminal ? 0 : Math.max(0, paragraphs.length - 1)) + 1
+/** The rows at 40 columns: the terminal's after their indent, the desktop's rule and quote as written; the margin, the tabs */
+function rowsTaken(paragraphs: readonly (readonly string[])[], isTerminal: boolean, isTabbed: boolean): number {
+  const rowsOf = (rows: readonly string[], room: number) => rows.reduce((sum, row) => sum + Math.max(1, Math.ceil(columnsOf(row) / room)), 0)
+  const rows = isTerminal ? rowsOf(paragraphs.flat(), ASK_COLUMNS - 2) : rowsOf(cardSection(paragraphs).split('\n'), ASK_COLUMNS)
+  return rows + 1 + (isTabbed ? 1 : 0)
 }
 
 /**
  * What goes above the dialog within its rows: all of it, else without the
  * options' descriptions, else the rows that fit from the top. None when no
- * line has a translation yet.
+ * line has a translation yet. Under a tab, one question, the tabs a row more.
  */
-export function askFitted(lines: readonly AskLine[], paras: readonly WwePara[], surface: string): string[][] {
+export function askFitted(lines: readonly AskLine[], paras: readonly WwePara[], surface: string, isTabbed = false): string[][] {
   if (paras.every(para => para.status === 'none')) {
     return []
   }
   const isTerminal = surface === 'terminal'
   const budget = askRows(surface)
   for (const withDescriptions of [true, false]) {
-    const paragraphs = askParagraphs(lines, paras, withDescriptions)
-    if (rowsTaken(paragraphs, isTerminal) <= budget) {
+    const paragraphs = askParagraphs(lines, paras, withDescriptions, isTabbed)
+    if (rowsTaken(paragraphs, isTerminal, isTabbed) <= budget) {
       return paragraphs
     }
   }
   const fitted: string[][] = []
-  for (const paragraph of askParagraphs(lines, paras, false)) {
+  for (const paragraph of askParagraphs(lines, paras, false, isTabbed)) {
     const kept: string[] = []
     for (const row of paragraph) {
-      if (rowsTaken([...fitted, [...kept, row]], isTerminal) > budget) {
+      if (rowsTaken([...fitted, [...kept, row]], isTerminal, isTabbed) > budget) {
         return kept.length > 0 ? [...fitted, kept] : fitted
       }
       kept.push(row)
@@ -148,13 +155,56 @@ export function askFitted(lines: readonly AskLine[], paras: readonly WwePara[], 
   return fitted
 }
 
+/** The lines of each question: where a question starts, up to the next one */
+export function askQuestions(lines: readonly AskLine[]): { from: number; to: number }[] {
+  const starts = lines.flatMap((line, i) => (line.isOption ? [] : [i]))
+  return starts.map((from, k) => ({ from, to: starts[k + 1] ?? lines.length }))
+}
+
+/** A several-question dialog's tabs: which question's translation shows, and how to show another */
+export type AskTabs = { index: number; select: (index: number) => void }
+
 /**
  * The dialog's translation above it, in the summary card's form: on the
- * desktop as its Markdown quote under a rule and a title; in the terminal,
- * which takes only plain Text there, as the same rows in grey.
+ * desktop as its Markdown quote under a rule; in the terminal,
+ * which takes only plain Text there, as the same rows in grey. On the
+ * desktop a dialog that asks several questions gets a tab for each, under the
+ * rule, and only the chosen question's translation: the dialog shows them
+ * one at a time and neither says which nor lets a plugin turn its page, so
+ * the person picks the tab.
  */
-export function askView(ui: ReplyUi, lines: readonly AskLine[], paras: readonly WwePara[], drawn: RenderElement, surface: string) {
-  const { Box, Text, Markdown } = ui
+export function askView(
+  ui: ReplyUi,
+  lines: readonly AskLine[],
+  paras: readonly WwePara[],
+  drawn: RenderElement,
+  surface: string,
+  tabs?: AskTabs,
+) {
+  const { Box, Text, Markdown, Button } = ui
+  const questions = askQuestions(lines)
+  if (surface !== 'terminal' && tabs && questions.length > 1) {
+    const index = Math.min(Math.max(tabs.index, 0), questions.length - 1)
+    const { from, to } = questions[index] ?? { from: 0, to: lines.length }
+    const paragraphs = askFitted(lines.slice(from, to), paras.slice(from, to), surface, true)
+    if (paras.every(para => para.status === 'none')) {
+      return drawn
+    }
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="column" marginBottom={1}>
+          <Markdown text={CARD_RULE} />
+          <Box flexDirection="row" columnGap={1}>
+            {questions.map((_, k) => (
+              <Button key={`ask-tab-${k}`} label={askTabLabel(k + 1)} {...tabStyle(k === index)} onPress={() => tabs.select(k)} />
+            ))}
+          </Box>
+          {paragraphs.length > 0 && <Markdown text={cardQuoteOf(paragraphs)} />}
+        </Box>
+        {drawn}
+      </Box>
+    )
+  }
   const paragraphs = askFitted(lines, paras, surface)
   if (paragraphs.length === 0) {
     return drawn
@@ -163,7 +213,7 @@ export function askView(ui: ReplyUi, lines: readonly AskLine[], paras: readonly 
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Markdown text={cardSection(paragraphs.map(rows => rows.join('\n')))} />
+          <Markdown text={cardSection(paragraphs)} />
         </Box>
         {drawn}
       </Box>
