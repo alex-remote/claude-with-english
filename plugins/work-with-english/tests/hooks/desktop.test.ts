@@ -90,12 +90,12 @@ describe('the desktop app', () => {
       origin: { kind: 'model', model: 'claude-test' },
       uuid: 'u1',
     })
-    w.replies.push(JSON.stringify(['插件没有改动。', '要发布吗？', '发布', '先不发']))
+    w.replies.push(JSON.stringify(['插件没有改动。', '要发布吗？', '发布', '发布 0.1.5。', '先不发']))
     await $.tool.call({
       tool: WRAP_UP_TOOL,
       recap: 'Nothing in the plugin changed.',
       ask: 'Shall I release it?',
-      actions: [{ label: 'Release' }, { label: 'Not yet' }, { action: 'commit' }],
+      actions: [{ label: 'Release', message: 'Release 0.1.5.' }, { label: 'Not yet' }, { action: 'commit' }],
     } as unknown as Parameters<typeof $.tool.call>[0])
     await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1000, isAborted: false, reason: 'answer' })
     await w.clock.settle()
@@ -109,8 +109,47 @@ describe('the desktop app', () => {
       surface: 'desktop',
     })
     expect(
-      await ui.find({ type: 'Text', text: `${reply}\n\n> 探针已删除。\n\n---\n\n**下方卡片的译文**\n\n> 插件没有改动。\n>\n> 问题：要发布吗？（发布 / 先不发）` }),
+      await ui.find({
+        type: 'Text',
+        text: `${reply}\n\n> 探针已删除。\n\n---\n\n**下方卡片的译文**\n\n> 插件没有改动。\n>\n> 问题：要发布吗？\n> - 发布，点击后发送：发布 0.1.5。\n> - 先不发`,
+      }),
     ).toBeDefined()
+
+    // A click on 发布 sends its message: let through as it is, drawn with its translation under it
+    const sent = await $.prompt.submit({ text: 'Release 0.1.5.', wait: false, origin: { kind: 'composer' } })
+    expect(sent).toEqual({ text: 'Release 0.1.5.' })
+    expect(w.submitted).toEqual(['Release 0.1.5.'])
+    const bubble = await $.ui.mount({
+      plugin: 'work-with-english',
+      component: 'UserMessage',
+      requestId: 'user-2',
+      viewport: { columns: 110, rows: 40, isFullscreen: true },
+      props: { text: 'Release 0.1.5.', origin: { kind: 'composer' }, isExpanded: false },
+      surface: 'desktop',
+    } as unknown as Parameters<typeof $.ui.mount>[0])
+    expect(await bubble.find({ type: 'Text', text: '发布 0.1.5。' })).toBeDefined()
+  })
+
+  test('a card button’s message in Chinese goes on even in strict mode, and is not counted as English written', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on)
+    on('tool.call', () => ({ result: 'Shown in the next-step box.' }))
+    on('ui.render', ($, e) => ({ type: 'Text', props: {}, children: [String((e.props as { text?: string }).text ?? '')] }))
+    await start($, w, 'desktop')
+    await $.ui.mount({ ...{ plugin: 'work-with-english', component: 'AbovePrompt', requestId: 'above-prompt', viewport: { columns: 110, rows: 40, isFullscreen: true }, props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 105, scroll: { offset: 0, bodyRows: 10 }, view: {} } }, surface: 'desktop' } as unknown as Parameters<typeof $.ui.mount>[0])
+    await $.tool.call({
+      tool: WRAP_UP_TOOL,
+      recap: 'Done.',
+      ask: 'Archive it?',
+      actions: [{ label: '归档', message: '归档这个会话。' }],
+    } as unknown as Parameters<typeof $.tool.call>[0])
+    await w.clock.settle()
+    const sent = await $.prompt.submit({ text: '归档这个会话。', wait: false, origin: { kind: 'composer' } })
+    expect(sent).toEqual({ text: '归档这个会话。' })
+    // Typed by hand, the same Chinese is held back
+    const typed = await $.prompt.submit({ text: '这是我自己写的。', wait: false, origin: { kind: 'composer' } })
+    expect(typed).toHaveProperty('drop')
+    await w.clock.settle()
+    expect([...w.files.keys()].filter(path => path.includes('/stats/'))).toEqual([])
   })
 
   test('a message that only starts with the letters goes on as any other', LOADS_THE_MOD, async ($, on) => {

@@ -1,5 +1,5 @@
-import type { WweCard, WwePara } from '../../../types'
-import { CARD_ASK, CARD_TITLE } from '../../core/copy/card'
+import type { WweCard, WweCardButton, WwePara } from '../../../types'
+import { CARD_ASK, CARD_SENDS, CARD_TITLE } from '../../core/copy/card'
 import { progressInline } from '../../core/copy/common'
 
 // 运行环境 › 桌面端: the summary card the desktop app draws when Claude calls
@@ -11,7 +11,10 @@ import { progressInline } from '../../core/copy/common'
 /** The desktop app's tool that draws the summary card; no other host has it */
 export const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 
-/** The card's text from the call: its recap, its question and the labels of its reply buttons */
+/**
+ * The card's text from the call: its recap, its question and its reply
+ * buttons, each with the message a click sends (its label when it names none).
+ */
 export function cardOf(call: Record<string, unknown>): WweCard | null {
   const recap = typeof call.recap === 'string' ? call.recap.trim() : ''
   if (recap === '') {
@@ -19,20 +22,27 @@ export function cardOf(call: Record<string, unknown>): WweCard | null {
   }
   const ask = typeof call.ask === 'string' && call.ask.trim() !== '' ? call.ask.trim() : null
   // An app action's button takes the app's own label, which the call does not carry
-  const labels = Array.isArray(call.actions)
-    ? call.actions.flatMap(action => {
-        const { label, action: appAction } = (typeof action === 'object' && action !== null ? action : {}) as {
+  const buttons = Array.isArray(call.actions)
+    ? call.actions.flatMap((action): WweCardButton[] => {
+        const { label, message, action: appAction } = (typeof action === 'object' && action !== null ? action : {}) as {
           label?: unknown
+          message?: unknown
           action?: unknown
         }
-        return typeof label === 'string' && label.trim() !== '' && appAction === undefined ? [label.trim()] : []
+        if (typeof label !== 'string' || label.trim() === '' || appAction !== undefined) {
+          return []
+        }
+        const sent = typeof message === 'string' && message.trim() !== '' ? message.trim() : label.trim()
+        return [{ label: label.trim(), message: sent }]
       })
     : []
-  return { recap, ask, labels: ask === null ? [] : labels }
+  return { recap, ask, buttons: ask === null ? [] : buttons }
 }
 
-/** Every text of the card that is translated: the recap, the question, each button */
-export const cardTexts = (card: WweCard): string[] => [card.recap, ...(card.ask === null ? [] : [card.ask]), ...card.labels]
+/** Every text of the card that is translated, each once: the recap, the question, each button and what it sends */
+export const cardTexts = (card: WweCard): string[] => [
+  ...new Set([card.recap, ...(card.ask === null ? [] : [card.ask]), ...card.buttons.flatMap(button => [button.label, button.message])]),
+]
 
 /** One text as the card's translation shows it: the translation, 翻译中…, why there is none; null for nothing */
 function shownOf(para: WwePara): string | null {
@@ -42,8 +52,8 @@ function shownOf(para: WwePara): string | null {
 /**
  * The card's translation for the end of the reply above it: a rule and a
  * title that set it apart from the reply's own translations, then as a quote
- * the recap's, and 问题 with the buttons' in brackets. Null when none of it
- * is translated (a card not in English).
+ * the recap's, 问题, and each button with what a click sends. Null when none
+ * of it is translated (a card not in English).
  */
 export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): string | null {
   const recap = shownOf(paraOf(card.recap))
@@ -51,11 +61,15 @@ export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): str
   if (recap === null && ask === null) {
     return null
   }
-  const buttons = card.labels.map(label => shownOf(paraOf(label)) ?? label)
-  const lines = [
+  // A button that sends more than its label says what it sends; one not translated yet shows its own words
+  const shown = (text: string) => shownOf(paraOf(text)) ?? text
+  const buttons = card.buttons.map(({ label, message }) =>
+    message === label ? `- ${shown(label)}` : `- ${shown(label)}${CARD_SENDS}${shown(message)}`,
+  )
+  const paragraphs = [
     ...(recap === null ? [] : [recap]),
-    ...(ask === null ? [] : [`${CARD_ASK}${ask}${buttons.length > 0 ? `（${buttons.join(' / ')}）` : ''}`]),
+    ...(ask === null ? [] : [[`${CARD_ASK}${ask}`, ...buttons].join('\n')]),
   ]
-  const quote = lines.map(line => line.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
+  const quote = paragraphs.map(paragraph => paragraph.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
   return `---\n\n**${CARD_TITLE}**\n\n${quote}`
 }

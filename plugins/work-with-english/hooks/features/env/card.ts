@@ -9,7 +9,9 @@ import { cardOf, cardTexts } from './nextStep'
 
 // The desktop's summary card: its text as Claude's call set it, translated as
 // a reply's paragraphs are, and kept at the turn's end under the hash of the
-// turn's last reply block, at whose end the reply draws it.
+// turn's last reply block, at whose end the reply draws it. What its buttons
+// send is noted too: a click sends it as the person's message, which strict
+// mode and the counts leave alone, and which is drawn with its translation.
 
 export type Card = ReturnType<typeof createCard>
 
@@ -39,6 +41,9 @@ export function createCard(host: Host, deps: { translate: (blocks: readonly Bloc
         return
       }
       card = set
+      for (const { message } of set.buttons) {
+        await host.state.sent.update(hash(message), () => ({ isCard: true }))
+      }
       await deps.translate(cardTexts(set).map(stepBlock))
     },
 

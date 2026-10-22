@@ -305,8 +305,14 @@ export type WweStats = {
   share: WweShare | null
 }
 
+/** One reply button of the summary card: what it reads, and what a click sends as the person's message */
+export type WweCardButton = { label: string; message: string }
+
 /** The desktop app's summary card, as Claude's call set it; recap '' for none (features/env/nextStep) */
-export type WweCard = { recap: string; ask: string | null; labels: string[] }
+export type WweCard = { recap: string; ask: string | null; buttons: WweCardButton[] }
+
+/** Whether a message is one a summary card's button sends, by the hash of its text */
+export type WweCardSent = { isCard: boolean }
 
 /** F16: one step of a task list Claude keeps in the desktop app, as it last set it */
 export type WweTaskStep = { text: string; status: 'pending' | 'in_progress' | 'completed' }
@@ -339,6 +345,7 @@ declare module 'claude-code' {
       stats: WweStats | null
       tasks: WweTasks
       card: StateFamily<WweCard>
+      sent: StateFamily<WweCardSent>
     }
   }
 }

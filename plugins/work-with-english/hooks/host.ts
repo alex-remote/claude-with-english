@@ -5,6 +5,7 @@ import type {
   WweBand,
   WweBook,
   WweCard,
+  WweCardSent,
   WweEnv,
   WwePane,
   WwePara,
@@ -141,5 +142,7 @@ export type Host = {
     tasks: Cell<WweTasks>
     /** The desktop's summary card, by the hash of the reply block it ends */
     card: FamilyCell<WweCard>
+    /** Messages a summary card's buttons send, by the hash of their text */
+    sent: FamilyCell<WweCardSent>
   }
 }

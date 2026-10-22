@@ -5,7 +5,7 @@ import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
 import { TASKS_ARG, tasksOpenedFromMessage } from './core/copy/tasks'
 import { DEFAULT_VIEW } from './core/settings/schema'
-import { EMPTY_BOOK, INITIAL_PANE, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
+import { EMPTY_BOOK, INITIAL_PANE, NOT_SENT, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
 import { hash } from './core/hash'
 import { isWweCommand, wweArgsOf } from './core/text/command'
 import { segment } from './core/text/segment'
@@ -16,6 +16,7 @@ import { EMPTY_BAND } from './features/band/empty'
 import { createCard } from './features/env/card'
 import type { Card } from './features/env/card'
 import { WRAP_UP_TOOL, cardQuote, cardTexts } from './features/env/nextStep'
+import { sentView } from './features/env/sentView'
 import { notFullscreen, startupToasts } from './features/env/toasts'
 import { takeUnseenReport, weeklyReminder } from './features/stats/report'
 import { bandView, isShown } from './features/band/view'
@@ -73,6 +74,7 @@ const bookAtom = atom({ plugin: 'work-with-english', key: 'book' } as const, EMP
 const statsAtom = atom({ plugin: 'work-with-english', key: 'stats' } as const, null)
 const tasksAtom = atom({ plugin: 'work-with-english', key: 'tasks' } as const, NO_TASKS)
 const cardAtom = atom({ plugin: 'work-with-english', key: 'card' } as const, NO_CARD)
+const sentAtom = atom({ plugin: 'work-with-english', key: 'sent' } as const, NOT_SENT)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -221,6 +223,10 @@ export const register: Register = on => {
           get: id => read($, memberOf(cardAtom, { requestId: id })),
           update: (id, fn) => update($, memberOf(cardAtom, { requestId: id }), fn),
         },
+        sent: {
+          get: id => read($, memberOf(sentAtom, { requestId: id })),
+          update: (id, fn) => update($, memberOf(sentAtom, { requestId: id }), fn),
+        },
       },
     }
     host = bound
@@ -367,7 +373,8 @@ export const register: Register = on => {
       })
       return { drop: isTasks ? tasksOpenedFromMessage() : settingsOpenedFromMessage() }
     }
-    if (!band) {
+    // A summary card's button sent it: Claude's words, not typed here, neither held back nor counted
+    if (!band || (await read($, memberOf(sentAtom, { requestId: hash(e.text.trim()) }))).isCard) {
       return next(e)
     }
     const result = await band.onSubmit(e, next)
@@ -655,6 +662,18 @@ export const register: Register = on => {
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const book = wordbook
     const text = e.props.text
+    // What a summary card's button sent: its translation under it
+    const sentKey = hash(text.trim())
+    if ((await read($, memberOf(sentAtom, { requestId: sentKey }))).isCard) {
+      const para = await read($, memberOf(paraAtom, { requestId: sentKey }))
+      if (para.status === 'none' && translatable(stepBlock(text.trim()))) {
+        replies?.note(sentKey)
+      } else if (para.status === 'pending') {
+        replies?.noteStale(stepBlock(text.trim()))
+      }
+      const drawn = await next(e)
+      return drawn ? sentView($.ui.resolve(e), drawn, para) : drawn
+    }
     if (!book || e.props.origin.kind !== 'composer' || !hasMineButtons(text)) {
       return next(e)
     }
