@@ -12,8 +12,8 @@
       "description": "Practice a target language while working in Claude Code: see a live translation of what you type, use it or retype it, and have Claude reply in that language.",
       "source": {
         "source": "archive",
-        "url": "https://github.com/alex-remote/claude-with-english/releases/download/v0.1.5/work-with-english-0.1.5.zip",
-        "sha256": "519afb0aceb6362a782096de8afa85a9870c9d15daab9e0098bbeb6d857af72f"
+        "url": "https://github.com/alex-remote/claude-with-english/releases/download/v0.1.6/work-with-english-0.1.6.zip",
+        "sha256": "a4782b5b01fa56ec7d1ce1269b6dda0cd5d32034df1f3f34dafd407e89f8f753"
       }
     }
   ]
