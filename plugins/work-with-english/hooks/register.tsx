@@ -5,14 +5,17 @@ import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
 import { TASKS_ARG, tasksOpenedFromMessage } from './core/copy/tasks'
 import { DEFAULT_VIEW } from './core/settings/schema'
-import { EMPTY_BOOK, INITIAL_PANE, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
+import { EMPTY_BOOK, INITIAL_PANE, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
+import { hash } from './core/hash'
 import { isWweCommand, wweArgsOf } from './core/text/command'
 import { segment } from './core/text/segment'
 import { localDate } from './core/time'
 import { createBand } from './features/band/controller'
 import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
-import { WRAP_UP_TOOL, withQuestionInReply } from './features/env/nextStep'
+import { createCard } from './features/env/card'
+import type { Card } from './features/env/card'
+import { WRAP_UP_TOOL, cardQuote, cardTexts } from './features/env/nextStep'
 import { notFullscreen, startupToasts } from './features/env/toasts'
 import { takeUnseenReport, weeklyReminder } from './features/stats/report'
 import { bandView, isShown } from './features/band/view'
@@ -69,6 +72,7 @@ const savedAtom = atom({ plugin: 'work-with-english', key: 'saved' } as const, U
 const bookAtom = atom({ plugin: 'work-with-english', key: 'book' } as const, EMPTY_BOOK)
 const statsAtom = atom({ plugin: 'work-with-english', key: 'stats' } as const, null)
 const tasksAtom = atom({ plugin: 'work-with-english', key: 'tasks' } as const, NO_TASKS)
+const cardAtom = atom({ plugin: 'work-with-english', key: 'card' } as const, NO_CARD)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -87,6 +91,7 @@ export const register: Register = on => {
   let wordbook: Wordbook | null = null
   let statsPage: StatsPage | null = null
   let tasks: Tasks | null = null
+  let card: Card | null = null
   /** F9: each reply's Markdown by the request id it is drawn under, to find a selection's sentence and code */
   const markdownByRequest = new Map<string, string>()
   let lastReadingMode: string | null = null
@@ -212,6 +217,10 @@ export const register: Register = on => {
         book: { get: () => read($, bookAtom), update: fn => update($, bookAtom, fn) },
         stats: { get: () => read($, statsAtom), update: fn => update($, statsAtom, fn) },
         tasks: { get: () => read($, tasksAtom), update: fn => update($, tasksAtom, fn) },
+        card: {
+          get: id => read($, memberOf(cardAtom, { requestId: id })),
+          update: (id, fn) => update($, memberOf(cardAtom, { requestId: id }), fn),
+        },
       },
     }
     host = bound
@@ -228,7 +237,8 @@ export const register: Register = on => {
     wordbook = wordbookOf
     const statsOf = createStatsPage(bound)
     statsPage = statsOf
-    tasks = createTasks(bound, { translate: blocks => repliesOf.translateSteps(blocks) })
+    tasks = createTasks(bound, { translate: blocks => repliesOf.translateLines(blocks) })
+    card = createCard(bound, { translate: blocks => repliesOf.translateLines(blocks) })
     const settingsOf = createSettings(bound, {
       speaker: speakerOf,
       onTab: tab => {
@@ -281,10 +291,6 @@ export const register: Register = on => {
       void loadSettings(bound).catch(error => bound.ui.debug(`settings sync: ${String(error)}`))
     })
 
-    // The summary card's tool was described before this module loaded: ask again, so the
-    // tool.describe hook below reaches the first request (2.1.304 types, `$.ui.invalidate`)
-    $.ui.invalidate('tool.describe')
-
     // Last, in its own try: a failed register must not stop the session's start
     try {
       await bound.command.register({
@@ -308,12 +314,6 @@ export const register: Register = on => {
       await loadSettings(host).catch(error => host?.ui.debug(`settings: ${String(error)}`))
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
-
-  // 桌面端: Claude asks in its reply, not on the summary card that hides the band
-  on('tool.describe', { tool: WRAP_UP_TOOL }, async ($, e, next) => {
-    const described = await next(e)
-    return { ...described, description: withQuestionInReply(described.description) }
   }).catch(($, e, next) => next(e))
 
   // A window, a phone or the terminal took the session
@@ -450,6 +450,7 @@ export const register: Register = on => {
   // F6: the main conversation's reply blocks, as they are kept
   on('session.append', ($, e, next) => {
     replies?.onAppend(e)
+    card?.onAppend(e)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -459,9 +460,18 @@ export const register: Register = on => {
     // F16: a task list made after this is a new one
     if (e.agentId === undefined) {
       void tasks?.onTurnEnd().catch(error => host?.ui.debug(`tasks turn: ${String(error)}`))
+      void card?.onTurnEnd().catch(error => host?.ui.debug(`card turn: ${String(error)}`))
     }
     return next(e)
   })
+
+  // 桌面端: the summary card's text, translated at the end of the reply above it; the call goes on unchanged
+  on('tool.call', { tool: WRAP_UP_TOOL }, async ($, e, next) => {
+    if (e.agentId === undefined) {
+      void card?.onCall(e as unknown as Record<string, unknown>).catch(error => host?.ui.debug(`card: ${String(error)}`))
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // F16 任务: the desktop app's task list, as Claude sets it; the call itself goes on unchanged
   on('tool.call', { tool: PLAN_TOOL }, async ($, e, next) => {
@@ -558,7 +568,9 @@ export const register: Register = on => {
     markdownByRequest.set(e.requestId, e.props.text)
     const current = replies
     const blocks = segment(e.props.text)
-    if (!current || !blocks.some(translatable)) {
+    // 桌面端: the summary card under the turn's last reply block, translated at its end
+    const ending = e.surface === 'terminal' ? NO_CARD : await read($, memberOf(cardAtom, { requestId: hash(e.props.text) }))
+    if (!current || (!blocks.some(translatable) && ending.recap === '')) {
       return next(e)
     }
     // The desktop draws one Claude Code drawing per block: the translations go into its text
@@ -573,7 +585,20 @@ export const register: Register = on => {
         }
         paras.push(para)
       }
-      const text = withTranslations(blocks, paras)
+      const cardParas = new Map<string, WwePara>()
+      for (const line of ending.recap === '' ? [] : cardTexts(ending)) {
+        const block = stepBlock(line)
+        const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
+        if (para.status === 'none' && translatable(block)) {
+          current.note(block.hash)
+        } else if (para.status === 'pending') {
+          current.noteStale(block)
+        }
+        cardParas.set(line, para)
+      }
+      const quote = ending.recap === '' ? null : cardQuote(ending, line => cardParas.get(line) ?? NO_PARA)
+      const translated = withTranslations(blocks, paras)
+      const text = quote === null ? translated : `${translated ?? e.props.text}\n\n${quote}`
       const drawn = await next(text === null ? e : { ...e, props: { ...e.props, text } })
       if (!drawn) {
         return drawn

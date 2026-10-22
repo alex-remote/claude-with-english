@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: WweSettings = {
   autoReplyCount: 1,
   autoReplyWhen: 'written',
   autoPlanAsk: true,
+  replyContext: true,
+  translateConcurrency: 4,
   speechService: 'system',
   voiceSystem: '',
   voiceOpenai: 'coral',
@@ -49,6 +51,10 @@ export const DELAY_MAX_MS = 5000
 export const REPLY_COUNT_MIN = 1
 export const REPLY_COUNT_MAX = 99
 
+/** F7: the range of 同时翻译的请求数 */
+export const CONCURRENCY_MIN = 1
+export const CONCURRENCY_MAX = 8
+
 /** One stored value, kept only when it has the default's type (and, for a choice, one of its values). */
 export function coerceSetting<K extends SettingKey>(key: K, stored: unknown): WweSettings[K] {
   const fallback = DEFAULT_SETTINGS[key]
@@ -63,6 +69,9 @@ export function coerceSetting<K extends SettingKey>(key: K, stored: unknown): Ww
     return fallback
   }
   if (key === 'autoReplyCount' && !isReplyCountInRange(stored as number)) {
+    return fallback
+  }
+  if (key === 'translateConcurrency' && !isConcurrencyInRange(stored as number)) {
     return fallback
   }
   return stored as WweSettings[K]
@@ -83,6 +92,9 @@ export const isDelayInRange = (ms: number) =>
 
 export const isReplyCountInRange = (n: number) =>
   Number.isInteger(n) && n >= REPLY_COUNT_MIN && n <= REPLY_COUNT_MAX
+
+export const isConcurrencyInRange = (n: number) =>
+  Number.isInteger(n) && n >= CONCURRENCY_MIN && n <= CONCURRENCY_MAX
 
 /**
  * F7: what a saved API key's placeholder shows: the first 3 and last 4

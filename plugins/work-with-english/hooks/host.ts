@@ -4,6 +4,7 @@ import type {
   WweAnalysis,
   WweBand,
   WweBook,
+  WweCard,
   WweEnv,
   WwePane,
   WwePara,
@@ -138,5 +139,7 @@ export type Host = {
     stats: Cell<WweStats | null>
     /** F16: the 任务 pane's lists */
     tasks: Cell<WweTasks>
+    /** The desktop's summary card, by the hash of the reply block it ends */
+    card: FamilyCell<WweCard>
   }
 }

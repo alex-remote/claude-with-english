@@ -411,6 +411,23 @@ describe('设置 Pane', () => {
     expect(fake.toasts.at(-1)).toBe('已保存：自动翻译回复 每轮最后 3 条')
   })
 
+  test('同时翻译的请求数：默认 4，1 到 8 之外红字不保存；附带前一段：默认开，可以关', async () => {
+    const { fake, ui } = await opened()
+    expect(ui.value('concurrency')).toBe('4')
+    await ui.input('concurrency', '9')
+    expect(ui.find({ type: 'Text', text: ERRORS.concurrency })).toBeDefined()
+    expect(fake.store.has('settings/translateConcurrency')).toBe(false)
+    await ui.input('concurrency', '6')
+    expect(fake.store.get('settings/translateConcurrency')).toBe(6)
+    expect(fake.toasts.at(-1)).toBe('已保存：同时翻译的请求数 6 个')
+
+    await ui.press('tab-reading')
+    expect(ui.find({ key: 'reply-context' })).toBeDefined()
+    await ui.press('reply-context')
+    expect(fake.store.get('settings/replyContext')).toBe(false)
+    expect(fake.toasts.at(-1)).toBe('已保存：附带前一段 关')
+  })
+
   test('翻译时机：只在“全部”时出现，默认“每条写完后”，可以改成“每轮做完后”', async () => {
     const { fake, ui } = await opened()
     await ui.press('tab-reading')

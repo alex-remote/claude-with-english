@@ -13,6 +13,8 @@ export type CorrectTask = { kind: 'correct'; text: string }
 export type ReplyBlockTask = { kind: 'replyBlock'; paras: readonly string[] }
 /** F6: one paragraph, from its own button */
 export type ParaTask = { kind: 'para'; text: string }
+/** F6: one paragraph of a reply or a plan, translated on its own; `before` the paragraph before it, for context */
+export type ReplyParaTask = { kind: 'replyPara'; text: string; before: string | null }
 /** F6: a plan's paragraphs */
 export type PlanTask = { kind: 'plan'; paras: readonly string[] }
 /** F6: a question's lines: the question, then its options */
@@ -33,6 +35,7 @@ export type Task =
   | CorrectTask
   | ReplyBlockTask
   | ParaTask
+  | ReplyParaTask
   | PlanTask
   | AskTask
   | SelectionTask
@@ -64,6 +67,7 @@ export type ValueOf = {
   correct: CorrectValue
   replyBlock: string[]
   para: string
+  replyPara: string
   plan: string[]
   ask: string[]
   selection: string

@@ -81,6 +81,17 @@ const PARA_SYSTEM = [
 /** F6: one paragraph (masked), from its own 翻译 button. */
 export const paraPrompt = (text: string): Prompt => ({ system: PARA_SYSTEM, prompt: sourceBlock(text) })
 
+const REPLY_PARA_SYSTEM = [
+  PARA_SYSTEM,
+  'The text inside <before>, when there is one, is the paragraph that comes before it: read it only to keep terms and references consistent, never translate it.',
+].join('\n')
+
+/** F6: one paragraph (masked) of a reply or a plan, with the paragraph before it when 附带前一段 is on. */
+export const replyParaPrompt = (text: string, before: string | null): Prompt => ({
+  system: REPLY_PARA_SYSTEM,
+  prompt: before === null ? sourceBlock(text) : `<before>\n${before}\n</before>\n${sourceBlock(text)}`,
+})
+
 // F15: English the person wrote, corrected; the Chinese fragments in it put
 // into English; and what it means, in the source language. P02 measured
 // this prompt at 20 of 20 parsed.

@@ -283,6 +283,10 @@ export function readingPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
         {switchRow(ui, 'auto-plan-ask', ITEM_NAMES.autoPlanAsk, settings.autoPlanAsk, () => actions.flip('autoPlanAsk'))}
         {note(ui, DESCRIPTIONS.autoPlanAsk)}
       </Box>
+      <Box {...GROUP}>
+        {switchRow(ui, 'reply-context', ITEM_NAMES.replyContext, settings.replyContext, () => actions.flip('replyContext'))}
+        {note(ui, DESCRIPTIONS.replyContext)}
+      </Box>
       {speechSection(ui, vm, actions)}
       {cacheSection(ui, vm, actions)}
     </Box>

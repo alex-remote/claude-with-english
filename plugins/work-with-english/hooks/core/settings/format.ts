@@ -3,6 +3,7 @@ import { savedToast } from '../copy/common'
 import {
   AUTO_REPLY_LABELS,
   AUTO_REPLY_WHEN_LABELS,
+  CONCURRENCY_UNIT,
   CARD_LANGUAGE_NAMES,
   CLAUDE_MODEL_LABELS,
   ITEM_NAMES,
@@ -47,6 +48,8 @@ export function formatValue<K extends SettingKey>(
         : AUTO_REPLY_LABELS[v as WweSettings['autoReply']]
     case 'autoReplyCount':
       return lastRepliesText(v as number)
+    case 'translateConcurrency':
+      return `${v as number} ${CONCURRENCY_UNIT}`
     case 'autoReplyWhen':
       return AUTO_REPLY_WHEN_LABELS[v as WweSettings['autoReplyWhen']]
     case 'readingMode':

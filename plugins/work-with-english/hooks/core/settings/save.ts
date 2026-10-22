@@ -2,7 +2,7 @@ import type { WweSettings } from '../../../types'
 import { ERRORS } from '../copy/settings'
 import { hostOf, isHttpUrl } from '../endpoints'
 import { delayFieldText } from './format'
-import { DEFAULT_SETTINGS, isDelayInRange, isReplyCountInRange } from './schema'
+import { DEFAULT_SETTINGS, isConcurrencyInRange, isDelayInRange, isReplyCountInRange } from './schema'
 import type { SettingKey } from './schema'
 
 // The rules of 设置 › 保存 in docs/feature-map.md, as pure functions: what a
@@ -36,6 +36,7 @@ export type Commit<K extends SettingKey = SettingKey> =
 export type InputKey =
   | 'delayMs'
   | 'autoReplyCount'
+  | 'translateConcurrency'
   | 'ankiDeck'
   | 'claudeModel'
   | 'openaiBaseUrl'
@@ -47,7 +48,7 @@ export type InputKey =
 /** The settings picked from a dropdown, a radio pair, a switch or a checkbox */
 export type SelectKey = Exclude<
   SettingKey,
-  'delayMs' | 'delayUnit' | 'autoReplyCount' | 'ankiDeck' | 'openaiBaseUrl' | 'openaiKey' | 'openaiTtsModel' | 'elevenKey'
+  'delayMs' | 'delayUnit' | 'autoReplyCount' | 'translateConcurrency' | 'ankiDeck' | 'openaiBaseUrl' | 'openaiKey' | 'openaiTtsModel' | 'elevenKey'
 >
 
 export type CommitExtra = {
@@ -92,6 +93,13 @@ function commitAny(key: InputKey, text: string, saved: WweSettings, extra: Commi
         return invalid(ERRORS.replyCount)
       }
       return n === saved.autoReplyCount ? NOOP : { kind: 'save', value: n }
+    }
+    case 'translateConcurrency': {
+      const n = /^\d+$/.test(text) ? Number(text) : NaN
+      if (!isConcurrencyInRange(n)) {
+        return invalid(ERRORS.concurrency)
+      }
+      return n === saved.translateConcurrency ? NOOP : { kind: 'save', value: n }
     }
     case 'openaiBaseUrl':
       return commitBaseUrl(text, saved, extra)

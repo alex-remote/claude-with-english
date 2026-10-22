@@ -2,6 +2,7 @@ import type { SelectOption } from 'claude-code'
 
 import type { WweSettingsView } from '../../../../types'
 import {
+  CONCURRENCY_UNIT,
   DELAY_UNITS,
   DESCRIPTIONS,
   FIELD_SUBMIT,
@@ -113,6 +114,21 @@ export function translatePage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
           ui,
           <Button key="goto-services" label={TRANSLATE_SERVICE_DESCRIPTION.link} onPress={() => actions.gotoServices()} />,
         )}
+      </Box>
+      <Box {...GROUP}>
+        <Box flexDirection="row" columnGap={1}>
+          <Input
+            key={vm.key('concurrency')}
+            label={ITEM_NAMES.translateConcurrency}
+            value={vm.fieldText('translateConcurrency', String(settings.translateConcurrency))}
+            submitLabel={FIELD_SUBMIT}
+            onInput={text => actions.edit('translateConcurrency', text)}
+            onSubmit={text => actions.submit('translateConcurrency', text)}
+          />
+          <Text>{CONCURRENCY_UNIT}</Text>
+        </Box>
+        {errorLine(ui, pane.errors.translateConcurrency)}
+        {note(ui, DESCRIPTIONS.translateConcurrency)}
       </Box>
     </Box>
   )

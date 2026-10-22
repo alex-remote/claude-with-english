@@ -59,8 +59,12 @@ export function createReplies(host: Host) {
     await writeJson(host, cacheFileOf(await dataDirOf(host), paraHash), { v: 1, zh })
   }
 
-  /** Asks for every paragraph of one reply block in one request. */
-  async function translateBlock(reply: ReplyBlock, isAutomatic: boolean) {
+  /**
+   * Asks for the paragraphs of one block not translated yet: a reply's or a
+   * plan's each in a request of its own, all at once (`perParagraph`); short
+   * lines (a question's, a task list's, a card's) together in one request.
+   */
+  async function translateBlock(reply: ReplyBlock, isAutomatic: boolean, perParagraph = false) {
     const todo = reply.blocks.filter(translatable)
     const missing: Block[] = []
     for (const block of todo) {
@@ -81,7 +85,7 @@ export function createReplies(host: Host) {
       inFlight.add(block.hash)
     }
     try {
-      await askFor(asking, isAutomatic)
+      await (perParagraph ? askEach(asking, reply.blocks) : askFor(asking, isAutomatic))
     } finally {
       for (const block of asking) {
         inFlight.delete(block.hash)
@@ -115,11 +119,41 @@ export function createReplies(host: Host) {
     }
   }
 
+  /** The longest paragraph before that goes with a request as context */
+  const BEFORE_MAX = 2000
+
+  /**
+   * Each paragraph in a request of its own, all sent at once (同时翻译的请求数
+   * caps how many are out), each shown as its translation comes; with 附带前一段
+   * the paragraph before it in its block goes along, for consistent terms.
+   */
+  async function askEach(missing: readonly Block[], blocks: readonly Block[]) {
+    const { replyContext } = await host.state.settings.get()
+    for (const block of missing) {
+      await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))
+    }
+    await Promise.all(
+      missing.map(async block => {
+        const at = blocks.findIndex(other => other.hash === block.hash)
+        const before = replyContext && at > 0 ? (blocks[at - 1]?.text.slice(0, BEFORE_MAX) ?? null) : null
+        const shielded = protect(block.text)
+        const result = await run(host, { kind: 'replyPara', text: shielded.masked, before })
+        if (result.ok) {
+          const zh = restore(result.value, shielded.tokens)
+          await host.state.para.update(block.hash, () => ({ status: 'done', zh, error: null, shown: true }))
+          await keep(block.hash, zh).catch(error => host.ui.debug(`reply cache: ${String(error)}`))
+        } else {
+          await host.state.para.update(block.hash, para => ({ ...para, status: 'failed', error: unavailable(result.reason), shown: true }))
+        }
+      }),
+    )
+  }
+
   /** 全部 with 每条写完后: a reply block translated as soon as it is written, without waiting for the turn's end */
   async function translateWritten(reply: ReplyBlock) {
     const settings = await host.state.settings.get()
     if (settings.readingMode === 'paragraph' && settings.autoReply === 'all' && settings.autoReplyWhen === 'written') {
-      await translateBlock(reply, true)
+      await translateBlock(reply, true, true)
     }
   }
 
@@ -143,7 +177,7 @@ export function createReplies(host: Host) {
       }
       // Its turn now, as a paragraph the turn's end marked
       queued.add(block.hash)
-      void translateBlock({ text: block.text, blocks: [block] }, true).catch(error => host.ui.debug(`reply stale: ${String(error)}`))
+      void translateBlock({ text: block.text, blocks: [block] }, true, true).catch(error => host.ui.debug(`reply stale: ${String(error)}`))
     }
   }
 
@@ -179,10 +213,11 @@ export function createReplies(host: Host) {
         queued.add(block.hash)
       }
     }
-    // The last first: usually the conclusion, the one read first
-    for (const reply of [...chosen].reverse()) {
-      await translateBlock(reply, true).catch(error => host.ui.debug(`reply auto: ${String(error)}`))
-    }
+    // All at once, the last first: usually the conclusion, the one read first. 同时翻译的请求数
+    // caps how many go out; the rest wait in the order they were asked
+    await Promise.all(
+      [...chosen].reverse().map(reply => translateBlock(reply, true, true).catch(error => host.ui.debug(`reply auto: ${String(error)}`))),
+    )
   }
 
   return {
@@ -232,7 +267,7 @@ export function createReplies(host: Host) {
     },
 
     /** F16 任务: a task list's steps, each a paragraph of its own; one translated before is not asked again */
-    async translateSteps(blocks: readonly Block[]) {
+    async translateLines(blocks: readonly Block[]) {
       await translateBlock({ text: '', blocks: [...blocks] }, true)
     },
 
@@ -242,7 +277,7 @@ export function createReplies(host: Host) {
       if (plan === null || !(await host.state.settings.get()).autoPlanAsk) {
         return
       }
-      await translateBlock({ text: plan, blocks: segment(plan) }, true)
+      await translateBlock({ text: plan, blocks: segment(plan) }, true, true)
     },
 
     /**

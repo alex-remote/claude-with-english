@@ -3,7 +3,7 @@ import type { TestBody } from 'claude-code/testing'
 
 import { firstRunToast } from '../../hooks/core/copy/common'
 import { settingsOpenedFromMessage } from '../../hooks/core/copy/settings'
-import { WRAP_UP_TOOL, withQuestionInReply } from '../../hooks/features/env/nextStep'
+import { WRAP_UP_TOOL } from '../../hooks/features/env/nextStep'
 import { start, world } from '../support/engine'
 
 // The desktop app as 3.1623.0 (Claude Code 2.1.304) runs a mod, measured on
@@ -63,31 +63,54 @@ describe('the desktop app', () => {
     expect(w.prompt.text).toBe('')
   })
 
-  test('the summary card’s tool tells Claude to ask in its reply; every other tool reads as it was', LOADS_THE_MOD, async ($, on) => {
+  test('the summary card’s tool reads to Claude as the app wrote it: the plugin adds nothing', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('tool.describe', ($, e) => ({ description: e.description }))
     await start($, w, 'desktop')
-    const provider = { plugin: 'mcp:ccd_turn', tier: 'user' } as const
-
-    const card = await $.tool.describe({ tool: WRAP_UP_TOOL, description: 'Fill the "next step" box.', provider })
-    const bash = await $.tool.describe({ tool: 'Bash', description: 'Runs a command.', provider: { plugin: 'engine', tier: 'core' } })
-
-    expect(card.description).toBe(withQuestionInReply('Fill the "next step" box.'))
-    expect(card.description).toContain('pass `recap` alone')
-    expect(bash.description).toBe('Runs a command.')
-    // Asked again, as on a resumed thread: the note is not added twice
-    expect(withQuestionInReply(card.description)).toBe(card.description)
+    const card = await $.tool.describe({
+      tool: WRAP_UP_TOOL,
+      description: 'Fill the "next step" box.',
+      provider: { plugin: 'mcp:ccd_turn', tier: 'user' },
+    })
+    expect(card.description).toBe('Fill the "next step" box.')
   })
 
-  test('the session’s start asks for the tools’ descriptions again, so the card’s note reaches the first turn', LOADS_THE_MOD, async ($, on) => {
+  test('the card’s recap, question and buttons are translated at the end of the turn’s last reply', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
-    const asked: string[] = []
-    on('ui.invalidate', ($, e) => {
-      asked.push(e.event)
-      return { value: undefined }
-    })
+    on('session.append', ($, e, next) => next(e))
+    on('turn.complete', () => ({ text: '' }))
+    on('tool.call', () => ({ result: 'Shown in the next-step box.' }))
+    on('ui.render', ($, e) => ({ type: 'Text', props: {}, children: [String((e.props as { text?: string }).text ?? '')] }))
     await start($, w, 'desktop')
-    expect(asked).toContain('tool.describe')
+    const reply = 'The probe is removed.'
+    w.replies.push('探针已删除。')
+    await $.session.append({
+      message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text: reply }] },
+      door: 'response',
+      origin: { kind: 'model', model: 'claude-test' },
+      uuid: 'u1',
+    })
+    w.replies.push(JSON.stringify(['插件没有改动。', '要发布吗？', '发布', '先不发']))
+    await $.tool.call({
+      tool: WRAP_UP_TOOL,
+      recap: 'Nothing in the plugin changed.',
+      ask: 'Shall I release it?',
+      actions: [{ label: 'Release' }, { label: 'Not yet' }, { action: 'commit' }],
+    } as unknown as Parameters<typeof $.tool.call>[0])
+    await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1000, isAborted: false, reason: 'answer' })
+    await w.clock.settle()
+
+    const ui = await $.ui.mount({
+      plugin: 'work-with-english',
+      component: 'AssistantMessage',
+      requestId: 'msg-1',
+      viewport: { columns: 110, rows: 40, isFullscreen: true },
+      props: { text: reply, isFirstOfReply: true },
+      surface: 'desktop',
+    })
+    expect(
+      await ui.find({ type: 'Text', text: `${reply}\n\n> 探针已删除。\n\n> 卡片：插件没有改动。\n>\n> 问题：要发布吗？（发布 / 先不发）` }),
+    ).toBeDefined()
   })
 
   test('a message that only starts with the letters goes on as any other', LOADS_THE_MOD, async ($, on) => {

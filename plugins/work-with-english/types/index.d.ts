@@ -24,6 +24,10 @@ export type WweSettings = {
   autoReplyWhen: 'written' | 'turnEnd'
   /** F6: auto-translate plans and questions */
   autoPlanAsk: boolean
+  /** F6: each paragraph of a reply or a plan asked with the paragraph before it, for consistent terms */
+  replyContext: boolean
+  /** F7: at most this many translation requests out at once (1 to 8) */
+  translateConcurrency: number
   /** F8 */
   speechService: 'system' | 'openai' | 'elevenlabs'
   /** F8: the voice per speech service; '' is the default (system default, the first ElevenLabs voice) */
@@ -301,6 +305,9 @@ export type WweStats = {
   share: WweShare | null
 }
 
+/** The desktop app's summary card, as Claude's call set it; recap '' for none (features/env/nextStep) */
+export type WweCard = { recap: string; ask: string | null; labels: string[] }
+
 /** F16: one step of a task list Claude keeps in the desktop app, as it last set it */
 export type WweTaskStep = { text: string; status: 'pending' | 'in_progress' | 'completed' }
 
@@ -331,6 +338,7 @@ declare module 'claude-code' {
       book: WweBook
       stats: WweStats | null
       tasks: WweTasks
+      card: StateFamily<WweCard>
     }
   }
 }

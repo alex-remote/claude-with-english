@@ -53,6 +53,7 @@ export const PANE_ID = 'wwe'
 const FIELDS: Partial<Record<InputKey, ControlKey>> = {
   delayMs: 'delay',
   autoReplyCount: 'reply-count',
+  translateConcurrency: 'concurrency',
   ankiDeck: 'anki-deck',
   claudeModel: 'model-id',
   openaiBaseUrl: 'openai-url',

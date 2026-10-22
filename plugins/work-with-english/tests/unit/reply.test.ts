@@ -22,8 +22,8 @@ const REPLIES = [
   'I found the cause. Want me to fix it?',
 ] as const
 
-function world(settings: WweSettingsView = DEFAULT_VIEW) {
-  const fake = fakeHost()
+function world(settings: WweSettingsView = DEFAULT_VIEW, store: Record<string, unknown> = {}) {
+  const fake = fakeHost({ store })
   const paras = new Map<string, WwePara>()
   const out: { system: string; prompt: string; answer: (text: string) => void }[] = []
   const host = fake.host as unknown as Record<string, any>
@@ -146,7 +146,7 @@ describe('F6 › 翻译时机', () => {
     w.replies.onAppend(appended(REPLIES[1]))
     await flush()
     expect(w.out.length).toBe(2)
-    w.out[0]?.answer(JSON.stringify(['我来看看配置是怎么加载的。']))
+    w.out[0]?.answer('我来看看配置是怎么加载的。')
     await flush()
     expect(w.statusOf(REPLIES[0])).toEqual(['done'])
 
@@ -154,13 +154,27 @@ describe('F6 › 翻译时机', () => {
     w.replies.onTurnComplete(turnEnd)
     await flush()
     expect(w.out.length).toBe(3)
-    w.out[1]?.answer(JSON.stringify(['加载器把文件读了两次。']))
-    w.out[2]?.answer(JSON.stringify(['我找到原因了。要我修吗？']))
+    w.out[1]?.answer('加载器把文件读了两次。')
+    w.out[2]?.answer('我找到原因了。要我修吗？')
     await flush()
     for (const text of REPLIES) {
       expect(w.statusOf(text)).toEqual(['done'])
     }
     expect(w.out.length).toBe(3)
+  })
+
+  test('附带前一段: a paragraph goes with the one before it; turned off, alone', async () => {
+    const twoParas = 'The loader reads the file twice.\n\nSo the second read wins.'
+    const on = world()
+    on.replies.onAppend(appended(twoParas))
+    await flush()
+    expect(on.out.map(request => request.prompt.includes('<before>'))).toEqual([false, true])
+    expect(on.out[1]?.prompt).toContain('<before>\nThe loader reads the file twice.\n</before>')
+
+    const off = world({ ...DEFAULT_VIEW, replyContext: false })
+    off.replies.onAppend(appended(twoParas))
+    await flush()
+    expect(off.out.map(request => request.prompt.includes('<before>'))).toEqual([false, false])
   })
 
   test('每轮做完后: nothing is asked while the turn goes on', async () => {
@@ -172,7 +186,7 @@ describe('F6 › 翻译时机', () => {
     expect(w.out.length).toBe(0)
   })
 
-  test('at the turn’s end every reply to translate says 翻译中… at once, while only the last is asked', async () => {
+  test('at the turn’s end every reply says 翻译中… and is asked at once, the last first', async () => {
     const w = world(TURN_END)
     for (const text of REPLIES) {
       w.replies.onAppend(appended(text))
@@ -180,24 +194,22 @@ describe('F6 › 翻译时机', () => {
     w.replies.onTurnComplete(turnEnd)
     await flush()
 
-    // One request out, for the last reply; the model has not answered it yet
-    expect(w.out.length).toBe(1)
+    // Every request out, the last reply's first; the model has not answered yet
+    expect(w.out.length).toBe(3)
     expect(w.out[0]?.prompt).toContain('I found the cause.')
+    expect(w.out[2]?.prompt).toContain('Let me check how the config is loaded.')
     for (const text of REPLIES) {
       expect(w.statusOf(text)).toEqual(['pending'])
       expect(underLines(w, text)).toEqual(['翻译中…'])
     }
 
-    // Each comes in as its request answers, the last first
-    w.out[0]?.answer(JSON.stringify(['我找到原因了。要我修吗？']))
+    // Each comes in as its own request answers
+    w.out[0]?.answer('我找到原因了。要我修吗？')
     await flush()
     expect(w.statusOf(REPLIES[2])).toEqual(['done'])
     expect(w.statusOf(REPLIES[0])).toEqual(['pending'])
-    expect(w.out.length).toBe(2)
-    expect(w.out[1]?.prompt).toContain('The loader reads the file twice.')
-    w.out[1]?.answer(JSON.stringify(['加载器把文件读了两次。']))
-    await flush()
-    w.out[2]?.answer(JSON.stringify(['我来看看配置是怎么加载的。']))
+    w.out[1]?.answer('加载器把文件读了两次。')
+    w.out[2]?.answer('我来看看配置是怎么加载的。')
     await flush()
     for (const text of REPLIES) {
       expect(w.statusOf(text)).toEqual(['done'])
@@ -205,31 +217,36 @@ describe('F6 › 翻译时机', () => {
     expect(w.out.length).toBe(3)
   })
 
-  test('翻译 on a reply still waiting its turn asks for it at once, and the turn does not ask for it again', async () => {
-    const w = world(TURN_END)
+  test('同时翻译的请求数 1: one request at a time, the last reply first; 翻译 on one waiting asks nothing more', async () => {
+    const w = world(TURN_END, { 'settings/translateConcurrency': 1 })
     for (const text of REPLIES) {
       w.replies.onAppend(appended(text))
     }
     w.replies.onTurnComplete(turnEnd)
     await flush()
+    expect(w.out.length).toBe(1)
+    expect(w.out[0]?.prompt).toContain('I found the cause.')
     const [first] = segment(REPLIES[0])
     if (!first) {
       throw new Error('no block')
     }
+    // Its request waits for a slot: 翻译中… already, so the button sends nothing
     void w.replies.toggle(first)
     await flush()
-    expect(w.out.length).toBe(2)
-    expect(w.out[1]?.prompt).toContain('Let me check how the config is loaded.')
-    w.out[1]?.answer('我来看看配置是怎么加载的。')
-    await flush()
-    expect(w.statusOf(REPLIES[0])).toEqual(['done'])
+    expect(w.out.length).toBe(1)
 
-    w.out[0]?.answer(JSON.stringify(['我找到原因了。要我修吗？']))
+    w.out[0]?.answer('我找到原因了。要我修吗？')
     await flush()
-    w.out[2]?.answer(JSON.stringify(['加载器把文件读了两次。']))
+    expect(w.out.length).toBe(2)
+    expect(w.out[1]?.prompt).toContain('The loader reads the file twice.')
+    w.out[1]?.answer('加载器把文件读了两次。')
+    await flush()
+    w.out[2]?.answer('我来看看配置是怎么加载的。')
     await flush()
     expect(w.out.length).toBe(3)
-    expect(w.statusOf(REPLIES[0])).toEqual(['done'])
+    for (const text of REPLIES) {
+      expect(w.statusOf(text)).toEqual(['done'])
+    }
   })
 
   test('每轮最后 1 条: only the last says 翻译中…; the others stay as they are, waiting for 翻译', async () => {

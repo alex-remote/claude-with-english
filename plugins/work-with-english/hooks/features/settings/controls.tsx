@@ -25,6 +25,7 @@ export type ControlKey =
   | 'translate-service'
   | 'auto-reply'
   | 'reply-count'
+  | 'concurrency'
   | 'auto-reply-when'
   | 'anki-deck'
   | 'claude-model'
@@ -42,7 +43,7 @@ export type ControlKey =
   | 'voice-eleven'
 
 /** The settings a switch flips */
-export type SwitchKey = 'strict' | 'bandButtons' | 'autoPlanAsk' | 'ankiSync' | 'weeklyReminder'
+export type SwitchKey = 'strict' | 'bandButtons' | 'autoPlanAsk' | 'replyContext' | 'ankiSync' | 'weeklyReminder'
 
 /**
  * What other features draw on a settings page, above its settings: the

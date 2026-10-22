@@ -49,6 +49,8 @@ export const ITEM_NAMES: Record<SettingKey, string> = {
   autoReplyCount: '自动翻译回复',
   autoReplyWhen: '翻译时机',
   autoPlanAsk: '自动翻译计划和提问',
+  replyContext: '附带前一段',
+  translateConcurrency: '同时翻译的请求数',
   speechService: '朗读服务',
   voiceSystem: '声音',
   voiceOpenai: '声音',
@@ -114,6 +116,8 @@ export const DESCRIPTIONS = {
   autoReply:
     'Claude 的回复默认全部自动翻译，每条写完后就翻，也可以改成每轮做完后再翻。只想看结论时，可以改成每轮最后几条，在这一轮做完后翻；其他段落点“翻译”再翻。',
   autoPlanAsk: '自动翻译计划模式里的计划，以及 Claude 提问时的问题和选项。两种阅读方式下都起作用。',
+  replyContext: '回复和计划按段翻译，每段单独请求。打开后每段附带前一段，用词和指代更连贯，用量稍多。',
+  translateConcurrency: '同时发出的翻译请求最多几个，1 到 8。调大翻得更快，但更容易触发服务的频率限制。',
   speechOnline: '在线语音更自然，读到一半可以停止。按字数收费，读过的内容会缓存，再读不重复收费。声音由 AI 生成。',
   cache:
     '回复的译文和朗读音频存在本机，一直保留。清除后，旧会话的段落要重新点“翻译”，在线语音要重新收费；单词本、统计和设置不受影响。',
@@ -190,6 +194,9 @@ export const AUTO_REPLY_WHEN_LABELS: Record<WweSettings['autoReplyWhen'], string
 
 /** The unit after the count field of 每轮最后 */
 export const REPLY_COUNT_UNIT = '条'
+
+/** The unit after the field of 同时翻译的请求数 */
+export const CONCURRENCY_UNIT = '个'
 
 export const lastRepliesText = (count: number) => `每轮最后 ${count} 条`
 
@@ -368,6 +375,7 @@ export function configDeleted(service: 'openai' | 'elevenlabs', translateBack: b
 export const ERRORS = {
   delay: '请输入 100 ms 到 5 s 之间的数字',
   replyCount: '请输入 1 到 99 之间的整数',
+  concurrency: '请输入 1 到 8 之间的整数',
   baseUrl: '请求地址要以 http:// 或 https:// 开头',
 } as const
 

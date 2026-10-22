@@ -14,6 +14,7 @@ import {
   lookupPrompt,
   myZhPrompt,
   paraPrompt,
+  replyParaPrompt,
   parseCorrect,
   parseDraft,
   parseLookup,
@@ -31,13 +32,13 @@ import type { Failed, Prompt, Task, TaskKind, TranslateResult, TransportOutcome,
 // (the Claude Code account, or an OpenAI-compatible endpoint), queue behind the two requests already out, retry a reply that does not
 // read once, and put any failure in words.
 
-/** At most this many requests out at once; the rest wait their turn. */
-export const MAX_CONCURRENT = 2
+/** At most this many requests out at once before 同时翻译的请求数 is read; the rest wait their turn. */
+export const MAX_CONCURRENT = DEFAULT_SETTINGS.translateConcurrency
 
 // What a turn's end translates on its own (F6: replies, plans, questions)
 // can come many at once; a request the user started and waits on (the
 // band, a button, a lookup) goes ahead of them in the queue.
-const AUTOMATIC: ReadonlySet<TaskKind> = new Set(['replyBlock', 'plan', 'ask'])
+const AUTOMATIC: ReadonlySet<TaskKind> = new Set(['replyBlock', 'replyPara', 'plan', 'ask'])
 
 export type Limiter = {
   /**
@@ -46,6 +47,8 @@ export type Limiter = {
    */
   acquire: (signal?: AbortSignal, isUrgent?: boolean) => Promise<boolean>
   release: () => void
+  /** A new ceiling (同时翻译的请求数): waiters it makes room for go at once; requests out stay out */
+  setMax: (n: number) => void
   readonly running: number
   readonly waiting: number
 }
@@ -54,6 +57,7 @@ type Waiter = { grant: () => void; isUrgent: boolean }
 
 export function createLimiter(max: number): Limiter {
   let running = 0
+  let ceiling = max
   const queue: Waiter[] = []
   return {
     get running() {
@@ -66,7 +70,7 @@ export function createLimiter(max: number): Limiter {
       if (signal?.aborted) {
         return Promise.resolve(false)
       }
-      if (running < max) {
+      if (running < ceiling) {
         running += 1
         return Promise.resolve(true)
       }
@@ -97,7 +101,15 @@ export function createLimiter(max: number): Limiter {
     },
     release() {
       running -= 1
-      queue.shift()?.grant()
+      if (running < ceiling) {
+        queue.shift()?.grant()
+      }
+    },
+    setMax(n) {
+      ceiling = n
+      while (running < ceiling && queue.length > 0) {
+        queue.shift()?.grant()
+      }
     },
   }
 }
@@ -160,6 +172,8 @@ function jobOf(task: Task): Job | null {
       }
     case 'para':
       return { prompt: paraPrompt(task.text), source: task.text, parse: parseDraft }
+    case 'replyPara':
+      return { prompt: replyParaPrompt(task.text, task.before), source: task.text, parse: parseDraft }
     case 'plan':
       return { prompt: replyBlockPrompt(task.paras), source: task.paras.join('\n\n'), parse: reply => parseReplyBlock(reply, task.paras.length) }
     case 'ask':
@@ -243,6 +257,7 @@ export async function run<T extends Task>(
   }
 
   const limiter = limiterOf(host)
+  limiter.setMax(await readSetting(host, 'translateConcurrency').catch(() => MAX_CONCURRENT))
   if (!(await limiter.acquire(signal, !AUTOMATIC.has(task.kind)))) {
     return failed(abortedBy(signal))
   }

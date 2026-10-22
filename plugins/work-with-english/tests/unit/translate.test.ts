@@ -318,14 +318,15 @@ describe('service choice', () => {
 })
 
 describe('concurrency', () => {
-  test('at most two requests out; the third starts when one ends', async () => {
+  const TWO = { 'settings/translateConcurrency': 2 }
+
+  test('同时翻译的请求数 2: at most two requests out; the third starts when one ends', async () => {
     const replies = [deferred<unknown>(), deferred<unknown>(), deferred<unknown>()]
-    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise)
+    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise, TWO)
     const first = run(host, { kind: 'draft', text: '一' })
     const second = run(host, { kind: 'draft', text: '二' })
     const third = run(host, { kind: 'draft', text: '三' })
     await flush()
-    expect(MAX_CONCURRENT).toBe(2)
     expect(calls.map(call => call.request.prompt)).toEqual(['<source>\n一\n</source>', '<source>\n二\n</source>'])
 
     replies[1]?.resolve(answered('Two'))
@@ -342,7 +343,7 @@ describe('concurrency', () => {
 
   test('a failed request frees its slot too', async () => {
     const replies = [deferred<unknown>(), deferred<unknown>()]
-    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise ?? answered('Three'))
+    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise ?? answered('Three'), TWO)
     const first = run(host, DRAFT)
     const second = run(host, DRAFT)
     const third = run(host, DRAFT)
@@ -355,9 +356,31 @@ describe('concurrency', () => {
     await second
   })
 
+  test('by default four requests go out at once; raising the setting sends the ones waiting', async () => {
+    const replies = Array.from({ length: 6 }, () => deferred<unknown>())
+    const store: Record<string, unknown> = {}
+    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise, store)
+    const runs = replies.map((_, i) => run(host, { kind: 'draft', text: String(i) }))
+    await flush()
+    expect(MAX_CONCURRENT).toBe(4)
+    expect(calls).toHaveLength(4)
+    // Read at the next request: one more asked with 6 lets every waiting one go
+    store['settings/translateConcurrency'] = 6
+    const extra = deferred<unknown>()
+    replies.push(extra)
+    runs.push(run(host, { kind: 'draft', text: 'more' }))
+    await flush()
+    expect(calls).toHaveLength(6)
+    for (const reply of replies) {
+      reply.resolve(answered('ok'))
+    }
+    await Promise.all(runs)
+    expect(calls).toHaveLength(7)
+  })
+
   test('a request taken over while it waits leaves the queue without sending', async () => {
     const replies = [deferred<unknown>(), deferred<unknown>()]
-    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise ?? answered('Later'))
+    const { host, calls } = fakeHost((_, n) => replies[n - 1]?.promise ?? answered('Later'), TWO)
     const first = run(host, DRAFT)
     const second = run(host, DRAFT)
     const stop = new AbortController()

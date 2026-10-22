@@ -43,23 +43,25 @@ describe('reply', () => {
     await start($, w)
 
     // Written, then asked at once, while the turn goes on
-    w.replies.push(JSON.stringify(['我来看看配置是怎么加载的。']))
+    w.replies.push('我来看看配置是怎么加载的。')
     await append($, REPLY_1, 'u1')
     await w.clock.settle()
     expect(w.asked.length).toBe(1)
+    // A request per paragraph, both at once
     w.replies.push(
-      JSON.stringify([
-        '我找到原因了。配置加载器在 ⟦1⟧ 加载之前就读取了 ⟦0⟧，所以拿到的是 ⟦2⟧。',
-        '我建议把 ⟦0⟧ 调用移到 ⟦1⟧ 顶部。要我改吗？',
-      ]),
+      '我找到原因了。配置加载器在 ⟦1⟧ 加载之前就读取了 ⟦0⟧，所以拿到的是 ⟦2⟧。',
+      '我建议把 ⟦0⟧ 调用移到 ⟦1⟧ 顶部。要我改吗？',
     )
     await append($, REPLY_2, 'u2')
     await w.clock.settle()
-    expect(w.asked.length).toBe(2)
+    expect(w.asked.length).toBe(3)
+    // 附带前一段: the second paragraph goes with the first, for context only
+    expect(w.asked[2]?.prompt).toContain('<before>')
+    expect(w.asked[1]?.prompt).not.toContain('<before>')
     // The turn's end asks for nothing twice
     await turnEnd($)
     await w.clock.settle()
-    expect(w.asked.length).toBe(2)
+    expect(w.asked.length).toBe(3)
     // Code went as placeholders and came back unchanged
     expect(w.asked[1]?.prompt).toContain('⟦0⟧')
     const terminal = await $.ui.mount({ ...message(REPLY_2), surface: 'terminal' })
@@ -90,14 +92,15 @@ describe('reply', () => {
     on('session.append', ($, e, next) => next(e))
     on('turn.complete', () => ({ text: '' }))
     on('ui.render', ($, e) => ({ type: 'Text', props: {}, children: [String((e.props as { text?: string }).text ?? '')] }))
-    w.replies.push(JSON.stringify(['一', '二']), '我来看看配置是怎么加载的。')
+    w.replies.push('一', '二', '我来看看配置是怎么加载的。')
     await start($, w)
 
     await append($, REPLY_1, 'u1')
     await append($, REPLY_2, 'u2')
     await turnEnd($)
     await w.clock.settle()
-    expect(w.asked.length).toBe(1)
+    // The last reply's two paragraphs, a request each
+    expect(w.asked.length).toBe(2)
 
     const ui = await $.ui.mount({ ...message(REPLY_1), surface: 'terminal' })
     expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
@@ -107,7 +110,7 @@ describe('reply', () => {
     await ui.press({ key: 'toggle-0' })
     expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
     await ui.press({ key: 'toggle-0' })
-    expect(w.asked.length).toBe(2)
+    expect(w.asked.length).toBe(3)
   })
 
   test('the desktop: one drawing of the block; its 翻译 asks for every paragraph, 收起译文 hides them all', LOADS_THE_MOD, async ($, on) => {
