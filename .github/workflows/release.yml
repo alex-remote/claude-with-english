@@ -38,10 +38,19 @@ jobs:
       - name: Type-check against the 2.1.304 types
         run: npx -y -p typescript@5.9 tsc -p tools/tsconfig.304.json
 
+      # The download can be rate-limited (HTTP 429): tried again, and a failure stops the job here
       - name: Install Claude Code
         run: |
-          curl -fsSL https://claude.ai/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -o pipefail
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSL https://claude.ai/install.sh | bash && "$HOME/.local/bin/claude" --version; then
+              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+              exit 0
+            fi
+            echo "Installing Claude Code failed (attempt $attempt of 5); trying again in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Validate and test
         run: |
