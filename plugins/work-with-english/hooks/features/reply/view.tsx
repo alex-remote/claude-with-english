@@ -121,6 +121,69 @@ export function translationOf(ui: ReplyUi, zh: string) {
   )
 }
 
+// The desktop app draws only the first of several Claude Code drawings in one
+// reply block (3.1623.0, 实测 10-22), so there the block is drawn once, its
+// text carrying each paragraph's translation as a quote right after it. The
+// English stays the app's own text, which ⌘C copies (F9).
+
+/** A translation as a Markdown quote: every line behind "> " */
+const quoted = (text: string) =>
+  text
+    .split('\n')
+    .map(line => (line.trim() === '' ? '>' : `> ${line}`))
+    .join('\n')
+
+/** What goes under a paragraph: its translation, 翻译中…, or why there is none; null for nothing */
+function underText(para: WwePara): string | null {
+  if (!para.shown || para.status === 'none') {
+    return null
+  }
+  return para.status === 'pending' ? progressInline('翻译') : para.status === 'failed' ? (para.error ?? null) : para.zh
+}
+
+/** The block's Markdown with each shown translation quoted after its paragraph; null when none is shown */
+export function withTranslations(blocks: readonly Block[], paras: readonly WwePara[]): string | null {
+  const unders = blocks.map((_, i) => {
+    const para = paras[i]
+    return para ? underText(para) : null
+  })
+  if (unders.every(under => under === null)) {
+    return null
+  }
+  return blocks.map((block, i) => (unders[i] ? `${block.text}\n\n${quoted(unders[i])}` : block.text)).join('\n\n')
+}
+
+/**
+ * The one button for the whole block where paragraphs have none: 翻译 shows
+ * every paragraph's translation, asking for the missing ones; 收起译文 hides
+ * them all; 翻译中… while any is asked for. Null with nothing to translate.
+ */
+export function wholeToggle(paras: readonly WwePara[]): { label: string; toShow: boolean } | null {
+  if (paras.length === 0) {
+    return null
+  }
+  if (paras.some(para => para.status === 'pending')) {
+    return { label: progressInline('翻译'), toShow: true }
+  }
+  const isAllShown = paras.every(para => para.status === 'done' && para.shown)
+  return { label: isAllShown ? '收起译文' : '翻译', toShow: !isAllShown }
+}
+
+/** The block as the desktop draws it once, with the whole block's 翻译 under the pointer */
+export function replyOnceView(ui: ReplyUi, drawn: RenderElement, toggle: { label: string; onPress: () => void } | null) {
+  const { Box, Button } = ui
+  return (
+    <Box key="reply" flexDirection="column">
+      {drawn}
+      {toggle && (
+        <Box position="absolute" right={0} bottom={0} display="none" hover={{ display: 'flex' }}>
+          <Button key="toggle-all" label={toggle.label} onPress={toggle.onPress} />
+        </Box>
+      )}
+    </Box>
+  )
+}
+
 export function replyView(ui: ReplyUi, parts: readonly ReplyPart[], actions: ReplyActions, speaking: WweSpeaking = null) {
   const { Box, Text, Button } = ui
   return (

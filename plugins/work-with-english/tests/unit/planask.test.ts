@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { segment } from '../../hooks/core/text/segment'
 import { askLines, askRows, askShown, planOf, planView } from '../../hooks/features/reply/planAsk'
-import { MARKDOWN_MAX, markdownPieces, replyView } from '../../hooks/features/reply/view'
+import { MARKDOWN_MAX, markdownPieces, replyView, wholeToggle, withTranslations } from '../../hooks/features/reply/view'
 import type { ReplyPart, ReplyUi } from '../../hooks/features/reply/view'
 import type { WwePara } from '../../types'
 
@@ -166,5 +166,38 @@ describe('a translation longer than one Markdown takes (2.1.288)', () => {
     const texts = markdownsOf(replyView(UI, [part], { toggle: () => undefined, speak: () => undefined, analyse: () => undefined }))
     expect(texts.every(text => text.length <= MARKDOWN_MAX)).toBe(true)
     expect(texts.join('\n')).toBe(LONG_LIST)
+  })
+})
+
+// The desktop app draws one Claude Code drawing per reply block (实测 10-22):
+// each translation goes into the block's text as a quote after its paragraph.
+describe('a reply on the desktop (F6)', () => {
+  const blocks = segment('First paragraph.\n\n- one\n- two\n\nLast paragraph.')
+  const shownZh = (zh: string): WwePara => ({ status: 'done', zh, error: null, shown: true })
+  const none: WwePara = { status: 'none', zh: null, error: null, shown: true }
+
+  test('each shown translation is quoted after its own paragraph, every line of it', () => {
+    expect(withTranslations(blocks, [shownZh('第一段。'), shownZh('- 一\n- 二'), none])).toBe(
+      'First paragraph.\n\n> 第一段。\n\n- one\n- two\n\n> - 一\n> - 二\n\nLast paragraph.',
+    )
+  })
+
+  test('翻译中… and the reason a translation failed stand where it would', () => {
+    const pending: WwePara = { status: 'pending', zh: null, error: null, shown: true }
+    const failed: WwePara = { status: 'failed', zh: null, error: '译文暂不可用：超时', shown: true }
+    expect(withTranslations(blocks, [pending, failed, none])).toBe(
+      'First paragraph.\n\n> 翻译中…\n\n- one\n- two\n\n> 译文暂不可用：超时\n\nLast paragraph.',
+    )
+  })
+
+  test('nothing shown leaves the text to Claude Code as it was', () => {
+    expect(withTranslations(blocks, [none, { ...shownZh('二'), shown: false }, none])).toBeNull()
+  })
+
+  test('the block’s one button: 翻译 until every paragraph shows, then 收起译文; 翻译中… while one is asked', () => {
+    expect(wholeToggle([])).toBeNull()
+    expect(wholeToggle([none, shownZh('二')])).toEqual({ label: '翻译', toShow: true })
+    expect(wholeToggle([shownZh('一'), shownZh('二')])).toEqual({ label: '收起译文', toShow: false })
+    expect(wholeToggle([{ ...none, status: 'pending' }, shownZh('二')])).toEqual({ label: '翻译中…', toShow: true })
   })
 })

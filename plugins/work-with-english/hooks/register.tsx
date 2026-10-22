@@ -1,6 +1,7 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
+import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
 import { DEFAULT_VIEW } from './core/settings/schema'
 import { EMPTY_BOOK, INITIAL_PANE, NO_PARA, UNKNOWN_SAVED } from './core/state/defaults'
@@ -27,7 +28,7 @@ import type { Picker } from './features/pick/controller'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
 import { askLines, askRows, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
-import { replyView } from './features/reply/view'
+import { replyOnceView, replyView, wholeToggle, withTranslations } from './features/reply/view'
 import type { ReplyPart } from './features/reply/view'
 import { createSpeaker } from './features/speak/controller'
 import type { Speaker } from './features/speak/controller'
@@ -495,6 +496,40 @@ export const register: Register = on => {
     const blocks = segment(e.props.text)
     if (!current || !blocks.some(translatable)) {
       return next(e)
+    }
+    // The desktop draws one Claude Code drawing per block: the translations go into its text
+    if (e.surface !== 'terminal') {
+      const paras: WwePara[] = []
+      for (const block of blocks) {
+        const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
+        if (para.status === 'none' && translatable(block)) {
+          current.note(block.hash)
+        }
+        paras.push(para)
+      }
+      const text = withTranslations(blocks, paras)
+      const drawn = await next(text === null ? e : { ...e, props: { ...e.props, text } })
+      if (!drawn) {
+        return drawn
+      }
+      const own = blocks.flatMap((block, i) => (translatable(block) ? [{ block, para: paras[i] ?? NO_PARA }] : []))
+      const toggle = wholeToggle(own.map(({ para }) => para))
+      return replyOnceView(
+        $.ui.resolve(e),
+        drawn,
+        toggle && {
+          label: toggle.label,
+          onPress: () => {
+            // Each paragraph that is not as the button says yet; one being asked for is left to finish
+            const moving = own.filter(({ para }) =>
+              toggle.toShow ? para.status !== 'pending' && !(para.status === 'done' && para.shown) : para.status === 'done' && para.shown,
+            )
+            for (const { block } of moving) {
+              void current.toggle(block).catch(error => host?.ui.debug(`reply toggle: ${String(error)}`))
+            }
+          },
+        },
+      )
     }
     const parts: ReplyPart[] = []
     for (const [index, block] of blocks.entries()) {

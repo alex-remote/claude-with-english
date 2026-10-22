@@ -58,14 +58,22 @@ describe('reply', () => {
     expect(w.asked.length).toBe(2)
     // Code went as placeholders and came back unchanged
     expect(w.asked[0]?.prompt).toContain('⟦0⟧')
-    for (const surface of ['terminal', 'desktop'] as const) {
-      const ui = await $.ui.mount({ ...message(REPLY_2), surface })
-      expect(
-        await ui.find({ type: 'Markdown', text: '我找到原因了。配置加载器在 `.env` 加载之前就读取了 `PORT`，所以拿到的是 `undefined`。' }),
-      ).toBeDefined()
-      expect(await ui.find({ type: 'Markdown', text: '我建议把 `dotenv` 调用移到 `server.ts` 顶部。要我改吗？' })).toBeDefined()
-      await ui.unmount()
-    }
+    const terminal = await $.ui.mount({ ...message(REPLY_2), surface: 'terminal' })
+    expect(
+      await terminal.find({ type: 'Markdown', text: '我找到原因了。配置加载器在 `.env` 加载之前就读取了 `PORT`，所以拿到的是 `undefined`。' }),
+    ).toBeDefined()
+    expect(await terminal.find({ type: 'Markdown', text: '我建议把 `dotenv` 调用移到 `server.ts` 顶部。要我改吗？' })).toBeDefined()
+    await terminal.unmount()
+    // The desktop draws the block once, each translation quoted after its paragraph
+    const desktop = await $.ui.mount({ ...message(REPLY_2), surface: 'desktop' })
+    const [first, second] = REPLY_2.split('\n\n')
+    expect(
+      await desktop.find({
+        type: 'Text',
+        text: `${first}\n\n> 我找到原因了。配置加载器在 \`.env\` 加载之前就读取了 \`PORT\`，所以拿到的是 \`undefined\`。\n\n${second}\n\n> 我建议把 \`dotenv\` 调用移到 \`server.ts\` 顶部。要我改吗？`,
+      }),
+    ).toBeDefined()
+    await desktop.unmount()
     // Kept on disk for /resume
     expect([...w.files.keys()].filter(path => path.includes('/replies/')).length).toBe(3)
     // F13: the English words of the replies
@@ -95,6 +103,31 @@ describe('reply', () => {
     await ui.press({ key: 'toggle-0' })
     expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
     await ui.press({ key: 'toggle-0' })
+    expect(w.asked.length).toBe(2)
+  })
+
+  test('the desktop: one drawing of the block; its 翻译 asks for every paragraph, 收起译文 hides them all', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on, { store: { 'settings/autoReply': 'off' } })
+    const drawings: string[] = []
+    on('ui.render', ($, e) => {
+      const text = String((e.props as { text?: string }).text ?? '')
+      drawings.push(text)
+      return { type: 'Text', props: {}, children: [text] }
+    })
+    w.replies.push('我找到原因了。', '我建议把调用移到顶部。')
+    await start($, w, 'desktop')
+
+    const ui = await $.ui.mount({ ...message(REPLY_2), surface: 'desktop' })
+    expect(drawings).toEqual([REPLY_2])
+    await ui.press({ key: 'toggle-all' })
+    await w.clock.settle()
+    expect(w.asked.length).toBe(2)
+    expect(await ui.find({ type: 'Text', text: /> 我找到原因了。[\s\S]*> 我建议把调用移到顶部。$/ })).toBeDefined()
+    expect(await ui.find({ key: 'toggle-all' })).toMatchObject({ props: { label: '收起译文' } })
+
+    await ui.press({ key: 'toggle-all' })
+    await w.clock.settle()
+    expect(await ui.find({ type: 'Text', text: REPLY_2 })).toBeDefined()
     expect(w.asked.length).toBe(2)
   })
 
