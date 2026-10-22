@@ -109,7 +109,7 @@ describe('the desktop app', () => {
       surface: 'desktop',
     })
     expect(
-      await ui.find({ type: 'Text', text: `${reply}\n\n> 探针已删除。\n\n> 卡片：插件没有改动。\n>\n> 问题：要发布吗？（发布 / 先不发）` }),
+      await ui.find({ type: 'Text', text: `${reply}\n\n> 探针已删除。\n\n---\n\n**下方卡片的译文**\n\n> 插件没有改动。\n>\n> 问题：要发布吗？（发布 / 先不发）` }),
     ).toBeDefined()
   })
 

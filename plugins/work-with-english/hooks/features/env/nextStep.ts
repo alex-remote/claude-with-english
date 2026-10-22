@@ -1,5 +1,5 @@
 import type { WweCard, WwePara } from '../../../types'
-import { CARD_ASK, CARD_RECAP } from '../../core/copy/card'
+import { CARD_ASK, CARD_TITLE } from '../../core/copy/card'
 import { progressInline } from '../../core/copy/common'
 
 // 运行环境 › 桌面端: the summary card the desktop app draws when Claude calls
@@ -40,9 +40,10 @@ function shownOf(para: WwePara): string | null {
 }
 
 /**
- * The card's translation as a Markdown quote for the end of the reply above
- * it: 卡片 and the recap's, then 问题 with the buttons' in brackets. Null when
- * none of it is translated (a card not in English).
+ * The card's translation for the end of the reply above it: a rule and a
+ * title that set it apart from the reply's own translations, then as a quote
+ * the recap's, and 问题 with the buttons' in brackets. Null when none of it
+ * is translated (a card not in English).
  */
 export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): string | null {
   const recap = shownOf(paraOf(card.recap))
@@ -52,8 +53,9 @@ export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): str
   }
   const buttons = card.labels.map(label => shownOf(paraOf(label)) ?? label)
   const lines = [
-    ...(recap === null ? [] : [`${CARD_RECAP}${recap}`]),
+    ...(recap === null ? [] : [recap]),
     ...(ask === null ? [] : [`${CARD_ASK}${ask}${buttons.length > 0 ? `（${buttons.join(' / ')}）` : ''}`]),
   ]
-  return lines.map(line => line.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
+  const quote = lines.map(line => line.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
+  return `---\n\n**${CARD_TITLE}**\n\n${quote}`
 }

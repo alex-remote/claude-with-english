@@ -22,13 +22,13 @@ describe('the summary card', () => {
 
   test('a recap alone is quoted alone; a card not in English adds nothing', () => {
     const card = { recap: 'Done.', ask: null, labels: [] }
-    expect(cardQuote(card, () => done('完成。'))).toBe('> 卡片：完成。')
+    expect(cardQuote(card, () => done('完成。'))).toBe('---\n\n**下方卡片的译文**\n\n> 完成。')
     expect(cardQuote(card, () => NO_PARA)).toBeNull()
   })
 
   test('a button whose translation has not come shows its own label meanwhile', () => {
     const card = { recap: 'Done.', ask: 'Ship it?', labels: ['Ship', 'Wait'] }
     const zh: Record<string, WwePara> = { 'Done.': done('完成。'), 'Ship it?': done('要发布吗？'), Ship: done('发布') }
-    expect(cardQuote(card, text => zh[text] ?? NO_PARA)).toBe('> 卡片：完成。\n>\n> 问题：要发布吗？（发布 / Wait）')
+    expect(cardQuote(card, text => zh[text] ?? NO_PARA)).toBe('---\n\n**下方卡片的译文**\n\n> 完成。\n>\n> 问题：要发布吗？（发布 / Wait）')
   })
 })
