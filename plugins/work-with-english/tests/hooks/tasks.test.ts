@@ -67,7 +67,7 @@ describe('the 任务 pane', () => {
     expect(w.asked.length).toBe(2)
   })
 
-  test('/wwe 任务 opens the pane; /wwe still opens the settings', LOADS_THE_MOD, async ($, on) => {
+  test('/wwe 任务, /wwe task and /wwe tasks open the pane; /wwe still opens the settings', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     const opened = panes(on)
     on('settings.read', () => ({ value: {} }))
@@ -77,6 +77,8 @@ describe('the 任务 pane', () => {
       $.command.run({ command: 'wwe', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
     await run('任务')
     await run('')
-    expect(opened).toEqual(['wwe-tasks', 'wwe'])
+    await run('task')
+    await run(' Tasks ')
+    expect(opened).toEqual(['wwe-tasks', 'wwe', 'wwe-tasks', 'wwe-tasks'])
   })
 })

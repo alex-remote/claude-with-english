@@ -44,9 +44,19 @@ export const cardTexts = (card: WweCard): string[] => [
   ...new Set([card.recap, ...(card.ask === null ? [] : [card.ask]), ...card.buttons.flatMap(button => [button.label, button.message])]),
 ]
 
-/** One text as the card's translation shows it: the translation, 翻译中…, why there is none; null for nothing */
-function shownOf(para: WwePara): string | null {
+/** One text as a card's translation shows it: the translation, 翻译中…, why there is none; null for nothing */
+export function shownOf(para: WwePara): string | null {
   return para.status === 'pending' ? progressInline('翻译') : para.status === 'failed' ? para.error : para.status === 'done' ? para.zh : null
+}
+
+/**
+ * A card's translation, the summary card's and the question dialog's alike:
+ * a rule and a title that set it apart from the reply's own translations,
+ * then its paragraphs as one quote ("问题：…" with "- 选项" lines under it).
+ */
+export function cardSection(paragraphs: readonly string[]): string {
+  const quote = paragraphs.map(paragraph => paragraph.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
+  return `---\n\n**${CARD_TITLE}**\n\n${quote}`
 }
 
 /**
@@ -66,10 +76,8 @@ export function cardQuote(card: WweCard, paraOf: (text: string) => WwePara): str
   const buttons = card.buttons.map(({ label, message }) =>
     message === label ? `- ${shown(label)}` : `- ${shown(label)}${CARD_SENDS}${shown(message)}`,
   )
-  const paragraphs = [
+  return cardSection([
     ...(recap === null ? [] : [recap]),
     ...(ask === null ? [] : [[`${CARD_ASK}${ask}`, ...buttons].join('\n')]),
-  ]
-  const quote = paragraphs.map(paragraph => paragraph.split('\n').map(part => `> ${part}`).join('\n')).join('\n>\n')
-  return `---\n\n**${CARD_TITLE}**\n\n${quote}`
+  ])
 }

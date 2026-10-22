@@ -1,9 +1,12 @@
 import type { RenderElement } from 'claude-code'
 
 import type { WwePara } from '../../../types'
+import { CARD_ASK, askNumbered } from '../../core/copy/card'
 import { progressInline } from '../../core/copy/common'
 import { hash } from '../../core/hash'
+import { NO_PARA } from '../../core/state/defaults'
 import type { Block } from '../../core/text/segment'
+import { cardSection, shownOf } from '../env/nextStep'
 import { translationOf } from './view'
 import type { ReplyUi } from './view'
 
@@ -56,24 +59,6 @@ export function planOf(output: unknown): string | null {
 }
 
 /**
- * A line's translation. Around the question dialog only plain Text may go
- * in the terminal (it refuses a Markdown there; the desktop takes one).
- */
-const under = (ui: ReplyUi, para: WwePara, isPlain: boolean) => {
-  const { Text } = ui
-  if (para.status === 'pending') {
-    return <Text dimColor>{progressInline('翻译')}</Text>
-  }
-  if (para.status === 'failed') {
-    return <Text dimColor>{para.error ?? ''}</Text>
-  }
-  if (!para.zh) {
-    return null
-  }
-  return isPlain ? <Text dimColor>{para.zh}</Text> : translationOf(ui, para.zh)
-}
-
-/**
  * The rows above the dialog: at most 12 in the terminal and 48 on the
  * desktop, counted at 40 columns; a taller tree is refused and the dialog
  * drawn alone (2.1.304 types, `RenderPropsOf['AskUserQuestion']`).
@@ -100,65 +85,114 @@ function columnsOf(text: string): number {
   return columns
 }
 
-/** The lines' rows at 40 columns, each after its indent and number */
-function rowsOf(line: AskLine, para: WwePara): number {
-  const text = para.status === 'pending' ? progressInline('翻译') : para.status === 'failed' ? (para.error ?? '') : (para.zh ?? '')
-  const indent = 2 + (line.isOption ? (line.number > 0 ? 2 : 5) : 0) + (line.number > 0 ? `${line.number}.`.length + 1 : 0)
-  return Math.max(1, Math.ceil(columnsOf(text) / Math.max(1, ASK_COLUMNS - indent)))
+/**
+ * The dialog's translation in the summary card's form (features/env/nextStep):
+ * per question a paragraph, "问题：" and its translation ("问题 1/2：" when the
+ * dialog asks several, as it shows them one by one), then "- " and each
+ * option's, with its description's after "：". A text not translated reads
+ * as 翻译中…, why it failed, or its own words.
+ */
+export function askParagraphs(lines: readonly AskLine[], paras: readonly WwePara[], withDescriptions: boolean): string[][] {
+  const paragraphs: string[][] = []
+  const total = lines.filter(line => !line.isOption).length
+  lines.forEach((line, i) => {
+    const shown = shownOf(paras[i] ?? NO_PARA) ?? line.text
+    const current = paragraphs.at(-1)
+    if (!line.isOption || !current) {
+      paragraphs.push([`${total > 1 ? askNumbered(paragraphs.length + 1, total) : CARD_ASK}${shown}`])
+    } else if (line.number > 0) {
+      current.push(`- ${shown}`)
+    } else if (withDescriptions && current.length > 1) {
+      current[current.length - 1] += `：${shown}`
+    }
+  })
+  return paragraphs
+}
+
+/** The rows the paragraphs take at 40 columns, each row after its quote or indent, and the rows around them */
+function rowsTaken(paragraphs: readonly (readonly string[])[], isTerminal: boolean): number {
+  const room = ASK_COLUMNS - 2
+  const rows = paragraphs.flat().reduce((sum, row) => sum + Math.max(1, Math.ceil(columnsOf(row) / room)), 0)
+  // The desktop's rule, title and the blank rows between them; a blank quote row between questions; the margin
+  return rows + (isTerminal ? 0 : 4) + (isTerminal ? 0 : Math.max(0, paragraphs.length - 1)) + 1
 }
 
 /**
- * Which lines go above the dialog within its rows, the margin under them
- * counted: all of them, else without the options' descriptions, else as
- * many as fit from the top.
+ * What goes above the dialog within its rows: all of it, else without the
+ * options' descriptions, else the rows that fit from the top. None when no
+ * line has a translation yet.
  */
-export function askShown(lines: readonly AskLine[], paras: readonly WwePara[], rows: number): number[] {
-  const drawn = lines.flatMap((line, i) => {
-    const para = paras[i]
-    return para && para.status !== 'none' ? [{ i, isDescription: line.isOption && line.number === 0, rows: rowsOf(line, para) }] : []
-  })
-  const total = (shown: typeof drawn) => shown.reduce((sum, line) => sum + line.rows, 0) + 1
-  if (total(drawn) <= rows) {
-    return drawn.map(line => line.i)
+export function askFitted(lines: readonly AskLine[], paras: readonly WwePara[], surface: string): string[][] {
+  if (paras.every(para => para.status === 'none')) {
+    return []
   }
-  const shown: number[] = []
-  let used = 1
-  for (const line of drawn.filter(line => !line.isDescription)) {
-    if (used + line.rows > rows) {
-      break
+  const isTerminal = surface === 'terminal'
+  const budget = askRows(surface)
+  for (const withDescriptions of [true, false]) {
+    const paragraphs = askParagraphs(lines, paras, withDescriptions)
+    if (rowsTaken(paragraphs, isTerminal) <= budget) {
+      return paragraphs
     }
-    used += line.rows
-    shown.push(line.i)
   }
-  return shown
+  const fitted: string[][] = []
+  for (const paragraph of askParagraphs(lines, paras, false)) {
+    const kept: string[] = []
+    for (const row of paragraph) {
+      if (rowsTaken([...fitted, [...kept, row]], isTerminal) > budget) {
+        return kept.length > 0 ? [...fitted, kept] : fitted
+      }
+      kept.push(row)
+    }
+    fitted.push(kept)
+  }
+  return fitted
 }
 
-/** The dialog's translation above it, its options numbered as the dialog numbers them. */
-export function askView(ui: ReplyUi, lines: readonly AskLine[], paras: readonly WwePara[], drawn: RenderElement, rows: number) {
-  const { Box, Text } = ui
-  const shown = new Set(askShown(lines, paras, rows))
-  if (shown.size === 0) {
+/**
+ * The dialog's translation above it, in the summary card's form: on the
+ * desktop as its Markdown quote under a rule and a title; in the terminal,
+ * which takes only plain Text there, as the same rows in grey.
+ */
+export function askView(ui: ReplyUi, lines: readonly AskLine[], paras: readonly WwePara[], drawn: RenderElement, surface: string) {
+  const { Box, Text, Markdown } = ui
+  const paragraphs = askFitted(lines, paras, surface)
+  if (paragraphs.length === 0) {
     return drawn
+  }
+  if (surface !== 'terminal') {
+    return (
+      <Box flexDirection="column">
+        <Box marginBottom={1}>
+          <Markdown text={cardSection(paragraphs.map(rows => rows.join('\n')))} />
+        </Box>
+        {drawn}
+      </Box>
+    )
   }
   return (
     <Box flexDirection="column">
       <Box flexDirection="column" paddingLeft={2} marginBottom={1}>
-        {lines.map((line, i) => {
-          const para = paras[i]
-          if (!para || !shown.has(i)) {
-            return null
-          }
-          return (
-            <Box key={`ask-${i}`} flexDirection="row" paddingLeft={line.isOption ? (line.number > 0 ? 2 : 5) : 0} columnGap={1}>
-              {line.number > 0 && <Text dimColor>{`${line.number}.`}</Text>}
-              {under(ui, para, true)}
-            </Box>
-          )
-        })}
+        {paragraphs.flat().map((row, i) => (
+          <Box key={`ask-${i}`}>
+            <Text dimColor>{row}</Text>
+          </Box>
+        ))}
       </Box>
       {drawn}
     </Box>
   )
+}
+
+/** A plan paragraph's translation under it: 翻译中…, why it failed, or the translation */
+const under = (ui: ReplyUi, para: WwePara) => {
+  const { Text } = ui
+  if (para.status === 'pending') {
+    return <Text dimColor>{progressInline('翻译')}</Text>
+  }
+  if (para.status === 'failed') {
+    return <Text dimColor>{para.error ?? ''}</Text>
+  }
+  return para.zh ? translationOf(ui, para.zh) : null
 }
 
 /** The approved plan as Claude Code draws it, its paragraphs' translations under it. */
@@ -173,7 +207,7 @@ export function planView(ui: ReplyUi, blocks: readonly Block[], paras: readonly 
           if (!para || para.status === 'none' || !para.shown) {
             return null
           }
-          return <Box key={`plan-${i}-${block.hash}`}>{under(ui, para, false)}</Box>
+          return <Box key={`plan-${i}-${block.hash}`}>{under(ui, para)}</Box>
         })}
       </Box>
     </Box>

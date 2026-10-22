@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { segment } from '../../hooks/core/text/segment'
-import { askLines, askRows, askShown, planOf, planView } from '../../hooks/features/reply/planAsk'
+import { askFitted, askLines, askView, planOf, planView } from '../../hooks/features/reply/planAsk'
 import { MARKDOWN_MAX, markdownPieces, replyView, wholeToggle, withTranslations } from '../../hooks/features/reply/view'
 import type { ReplyPart, ReplyUi } from '../../hooks/features/reply/view'
 import type { WwePara } from '../../types'
@@ -32,30 +32,40 @@ describe('plan and question lines (F6 › 计划和提问)', () => {
     expect(askLines([null, 'text', { options: 'none' }])).toEqual([])
   })
 
-  // 2.1.304: at most 12 rows above the dialog in the terminal, 48 on the desktop, at 40 columns
+  // The summary card's form (features/env/nextStep), within 2.1.304's rows above the dialog:
+  // at most 12 in the terminal, 48 on the desktop, at 40 columns
   const done = (zh: string): WwePara => ({ status: 'done', zh, error: null, shown: true })
+  const longZh = '用户退出登录时，缓存应该怎样清除？这一句译文比较长，要占两行。'
+  const longDesc = longZh + longZh
   const fourOptions = askLines([
     {
       question: 'Which way should the cache be cleared when the user signs out?',
       options: [1, 2, 3, 4].map(n => ({ label: `Option ${n}`, description: `What option ${n} does, said in full` })),
     },
   ])
-  const longZh = '用户退出登录时，缓存应该怎样清除？这一句译文比较长，要占两行。'
-  const parasOf = (lines: typeof fourOptions) => lines.map(line => done(line.isOption ? (line.number > 0 ? '选项' : longZh) : longZh))
+  const parasOf = (lines: typeof fourOptions) => lines.map(line => done(line.isOption ? (line.number > 0 ? '选项' : longDesc) : longZh))
 
-  test('every line fits on the desktop', () => {
-    expect(askShown(fourOptions, parasOf(fourOptions), askRows('desktop'))).toHaveLength(fourOptions.length)
+  test('问题 and each option with its description after ：, all of it on the desktop', () => {
+    expect(askFitted(fourOptions, parasOf(fourOptions), 'desktop')).toEqual([
+      [`问题：${longZh}`, ...[1, 2, 3, 4].map(() => `- 选项：${longDesc}`)],
+    ])
   })
 
   test('the terminal leaves out the options’ descriptions when all would not fit', () => {
-    const shown = askShown(fourOptions, parasOf(fourOptions), askRows('terminal'))
-    expect(shown.map(i => fourOptions[i]?.text)).toEqual([fourOptions[0]?.text, 'Option 1', 'Option 2', 'Option 3', 'Option 4'])
+    expect(askFitted(fourOptions, parasOf(fourOptions), 'terminal')).toEqual([[`问题：${longZh}`, '- 选项', '- 选项', '- 选项', '- 选项']])
   })
 
-  test('a question too long for the rows keeps what fits from the top, and none when nothing does', () => {
+  test('questions too many for the rows keep what fits from the top; one too tall alone, or none translated, draws nothing', () => {
     const many = Array.from({ length: 8 }, (_, n) => ({ text: `Question ${n}?`, isOption: false, number: 0 }))
-    expect(askShown(many, many.map(() => done(longZh)), askRows('terminal'))).toEqual([0, 1, 2, 3, 4])
-    expect(askShown(many, many.map(() => done(longZh)), 2)).toEqual([])
+    expect(askFitted(many, many.map(() => done(longZh)), 'terminal')).toHaveLength(5)
+    const tall = [{ text: 'Why?', isOption: false, number: 0 }]
+    expect(askFitted(tall, [done(longZh.repeat(10))], 'terminal')).toEqual([])
+    expect(askFitted(fourOptions, fourOptions.map(() => ({ status: 'none', zh: null, error: null, shown: false })), 'desktop')).toEqual([])
+  })
+
+  test('a line not translated yet reads as 翻译中… or as its own words', () => {
+    const paras = parasOf(fourOptions).map((para, i) => (i === 0 ? { ...para, status: 'pending' as const, zh: null } : i === 1 ? { ...para, status: 'none' as const, zh: null } : para))
+    expect(askFitted(fourOptions, paras, 'desktop')[0]?.slice(0, 2)).toEqual(['问题：翻译中…', `- Option 1：${longDesc}`])
   })
 
   test('the plan comes with the result of the call that leaves plan mode', () => {
@@ -199,5 +209,40 @@ describe('a reply on the desktop (F6)', () => {
     expect(wholeToggle([none, shownZh('二')])).toEqual({ label: '翻译', toShow: true })
     expect(wholeToggle([shownZh('一'), shownZh('二')])).toEqual({ label: '收起译文', toShow: false })
     expect(wholeToggle([{ ...none, status: 'pending' }, shownZh('二')])).toEqual({ label: '翻译中…', toShow: true })
+  })
+})
+
+describe('the question dialog’s translation, as the summary card’s', () => {
+  const lines = askLines([{ question: 'Which budget?', options: [{ label: 'large', description: 'Matches the defaults' }, { label: 'small' }] }])
+  const zh = ['用哪种预算？', '大', '与默认设置一致', '小'].map((text): WwePara => ({ status: 'done', zh: text, error: null, shown: true }))
+  const drawn = { type: 'Text', props: {}, children: ['the dialog'] } as unknown as Parameters<typeof askView>[3]
+
+  test('the desktop: a rule, the title and a quote above the dialog', () => {
+    const tree = askView(UI, lines, zh, drawn, 'desktop') as unknown as Node
+    expect(all(tree).find(node => node.type === 'Markdown')?.props.text).toBe(
+      '---\n\n**下方卡片的译文**\n\n> 问题：用哪种预算？\n> - 大：与默认设置一致\n> - 小',
+    )
+  })
+
+  test('a dialog that asks several questions numbers them: 问题 1/2, 问题 2/2', () => {
+    const two = askLines([
+      { question: 'Which budget?', options: [{ label: 'large' }] },
+      { question: 'Accept task?', options: [{ label: 'yes' }] },
+    ])
+    const zhTwo = ['用哪种预算？', '大', '接受 task 吗？', '接受'].map((text): WwePara => ({ status: 'done', zh: text, error: null, shown: true }))
+    expect(askFitted(two, zhTwo, 'desktop')).toEqual([
+      ['问题 1/2：用哪种预算？', '- 大'],
+      ['问题 2/2：接受 task 吗？', '- 接受'],
+    ])
+  })
+
+  test('the terminal: the same rows in grey, with no Markdown', () => {
+    const tree = askView(UI, lines, zh, drawn, 'terminal') as unknown as Node
+    expect(all(tree).some(node => node.type === 'Markdown')).toBe(false)
+    expect(all(tree).filter(node => node.type === 'Text' && node.props.dimColor === true).map(node => node.children.join(''))).toEqual([
+      '问题：用哪种预算？',
+      '- 大：与默认设置一致',
+      '- 小',
+    ])
   })
 })

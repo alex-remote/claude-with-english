@@ -99,6 +99,38 @@ function underLines(w: ReturnType<typeof world>, text: string): string[] {
     .map(textOf)
 }
 
+const thought = (text: string) =>
+  ({
+    message: { type: 'assistant', role: 'assistant', content: [{ type: 'thinking', thinking: text, signature: 'sig' }] },
+    door: 'response',
+    origin: { kind: 'model', model: 'claude-test' },
+    uuid: `thinking-${text}`,
+  }) as unknown as Args<'session.append'>
+
+describe('F6 › narration (the desktop draws thinking text as a reply block)', () => {
+  test('a thinking block is translated once drawn as a reply block, in either order; one never drawn costs nothing', async () => {
+    const w = world()
+    w.replies.onAppend(thought('Let me check the loader first.'))
+    await flush()
+    expect(w.out.length).toBe(0)
+    w.replies.onDrawn('Let me check the loader first.')
+    await flush()
+    expect(w.out.length).toBe(1)
+    expect(w.out[0]?.prompt).toContain('Let me check the loader first.')
+
+    // Drawn before its thinking block came
+    w.replies.onDrawn('Then I will read the config.')
+    w.replies.onAppend(thought('Then I will read the config.'))
+    await flush()
+    expect(w.out.length).toBe(2)
+
+    // Hidden thinking, never drawn: nothing asked
+    w.replies.onAppend(thought('Some private reasoning.'))
+    await flush()
+    expect(w.out.length).toBe(2)
+  })
+})
+
 describe('F6 › 翻译中… left behind', () => {
   test('one a module cut off mid-request left is asked again; one this module is asking is left alone', async () => {
     const w = world()

@@ -1,5 +1,6 @@
 import type { Args } from 'claude-code'
 
+import { hash } from '../../core/hash'
 import { countEnWords, mainLang } from '../../core/text/lang'
 import { protect, restore } from '../../core/text/protect'
 import { needsTranslation, segment } from '../../core/text/segment'
@@ -43,6 +44,20 @@ export function createReplies(host: Host) {
   const queued = new Set<string>()
   /** Paragraphs whose request is on its way */
   const inFlight = new Set<string>()
+  /**
+   * Thinking blocks with text, by the hash of it: the desktop draws its
+   * narration, the text Claude writes between calls, as a reply block. One is
+   * translated only once drawn, so thinking a surface never draws costs nothing.
+   */
+  const narration = new Map<string, ReplyBlock>()
+  /** Reply blocks drawn before their thinking block came: the order the desktop may take */
+  const drawnFirst = new Set<string>()
+
+  /** A narration block from now on a reply like any other */
+  function promote(reply: ReplyBlock) {
+    pending.push(reply)
+    void translateWritten(reply).catch(error => host.ui.debug(`narration written: ${String(error)}`))
+  }
   /**
    * Paragraphs drawn as 翻译中… that no request of this module is on: the
    * module before it was cut off mid-request (a reload, an update), and
@@ -234,6 +249,14 @@ export function createReplies(host: Host) {
             const reply = { text: block.text, blocks: segment(block.text) }
             pending.push(reply)
             void translateWritten(reply).catch(error => host.ui.debug(`reply written: ${String(error)}`))
+          } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking.trim() !== '') {
+            const key = hash(block.thinking.trim())
+            const reply = { text: block.thinking, blocks: segment(block.thinking) }
+            if (drawnFirst.delete(key)) {
+              promote(reply)
+            } else {
+              narration.set(key, reply)
+            }
           }
         }
         return
@@ -243,6 +266,22 @@ export function createReplies(host: Host) {
       if (e.door === 'delivery' && message.type === 'user' && !message.isMeta && pending.length > 0) {
         void finish().catch(error => host.ui.debug(`reply finish: ${String(error)}`))
       }
+    },
+
+    /** A reply block drawn: a narration block among them is from now on a reply like any other */
+    onDrawn(text: string) {
+      const key = hash(text.trim())
+      const reply = narration.get(key)
+      if (!reply) {
+        // Kept a while, for a thinking block that comes after its drawing
+        if (drawnFirst.size > 500) {
+          drawnFirst.clear()
+        }
+        drawnFirst.add(key)
+        return
+      }
+      narration.delete(key)
+      promote(reply)
     },
 
     /** A question or a plan: Claude stops to wait for the person, the stretch before it is done */

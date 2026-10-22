@@ -3,7 +3,7 @@ import type { Register } from 'claude-code'
 
 import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
-import { TASKS_ARG, tasksOpenedFromMessage } from './core/copy/tasks'
+import { isTasksArg, tasksOpenedFromMessage } from './core/copy/tasks'
 import { DEFAULT_VIEW } from './core/settings/schema'
 import { EMPTY_BOOK, INITIAL_PANE, NOT_SENT, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
 import { hash } from './core/hash'
@@ -32,7 +32,7 @@ import { createPicker } from './features/pick/controller'
 import type { Picker } from './features/pick/controller'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
-import { askLines, askRows, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
+import { askLines, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
 import { descriptionOf, toolLineView } from './features/reply/toolLine'
 import { replyOnceView, replyView, wholeToggle, withTranslations } from './features/reply/view'
 import type { ReplyPart } from './features/reply/view'
@@ -331,7 +331,7 @@ export const register: Register = on => {
 
   // /wwe: the settings; /wwe 任务: the task lists (F16); nothing printed
   on('command.run', { command: 'wwe' }, async ($, e) => {
-    if (e.args.trim() === TASKS_ARG) {
+    if (isTasksArg(e.args)) {
       await tasks?.open(true)
     } else {
       await openSettings()
@@ -357,7 +357,7 @@ export const register: Register = on => {
     // /wwe sent on as a message: the desktop app's prompt box may not know a mod's command yet (#99691)
     const wweArgs = e.origin.kind === 'composer' ? wweArgsOf(e.text) : null
     if (wweArgs !== null) {
-      const isTasks = wweArgs === TASKS_ARG
+      const isTasks = isTasksArg(wweArgs)
       if (isTasks) {
         await tasks?.open(true)
       } else {
@@ -568,7 +568,7 @@ export const register: Register = on => {
       return next(e)
     }
     // Claude Code's dialog goes in exactly once, under the translation
-    return askView($.ui.resolve(e), lines, paras, await next(e), askRows(e.surface))
+    return askView($.ui.resolve(e), lines, paras, await next(e), e.surface)
   })
 
   // F6 › 计划和提问: the approved plan's translation under it
@@ -601,6 +601,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     markdownByRequest.set(e.requestId, e.props.text)
     const current = replies
+    // Narration drawn as a reply block: translated as one from now on (not while drawing)
+    const drawnText = e.props.text
+    host?.clock.after(0, () => current?.onDrawn(drawnText))
     const blocks = segment(e.props.text)
     // 桌面端: the summary card under the turn's last reply block, translated at its end
     const kept = e.surface === 'terminal' ? NO_CARD : await read($, memberOf(cardAtom, { requestId: hash(e.props.text) }))
