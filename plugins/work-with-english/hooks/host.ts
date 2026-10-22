@@ -3,6 +3,7 @@ import type { EngineInterface, SettingsSource, Timer } from 'claude-code'
 import type {
   WweAnalysis,
   WweBand,
+  WweAsking,
   WweBook,
   WweCard,
   WweCardSent,
@@ -144,5 +145,7 @@ export type Host = {
     card: FamilyCell<WweCard>
     /** Messages a summary card's buttons send, by the hash of their text */
     sent: FamilyCell<WweCardSent>
+    /** F6: the paragraphs asked for translation, for a module loaded again */
+    asking: Cell<WweAsking>
   }
 }

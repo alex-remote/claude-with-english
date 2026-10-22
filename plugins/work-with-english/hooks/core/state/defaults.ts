@@ -1,4 +1,4 @@
-import type { WweBook, WweCard, WweCardSent, WwePane, WwePara, WweSaved, WweTasks } from '../../../types'
+import type { WweAsking, WweBook, WweCard, WweCardSent, WwePane, WwePara, WweSaved, WweTasks } from '../../../types'
 
 // The initial values of the `$.state` entries the M2 features add; register.tsx
 // names them in its atoms, and tests start from them.
@@ -32,6 +32,8 @@ export const NO_TASKS: WweTasks = { lists: [], turn: 0, isShown: false }
 export const NO_CARD: WweCard = { recap: '', ask: null, buttons: [] }
 
 export const NOT_SENT: WweCardSent = { isCard: false }
+
+export const NOT_ASKING: WweAsking = { blocks: [] }
 
 export const EMPTY_BOOK: WweBook = {
   status: 'loading',

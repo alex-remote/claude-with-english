@@ -50,6 +50,23 @@ export function createReplies(host: Host) {
    * translated only once drawn, so thinking a surface never draws costs nothing.
    */
   const narration = new Map<string, ReplyBlock>()
+  /** The most paragraphs kept as asked for: older ones are long answered */
+  const ASKING_MAX = 300
+
+  /** Paragraphs from now on at 翻译中…, kept in $.state for a module loaded again (resume) */
+  async function remember(blocks: readonly Block[]) {
+    if (blocks.length === 0) {
+      return
+    }
+    const added = new Set(blocks.map(block => block.hash))
+    await host.state.asking.update(asking => ({
+      blocks: [
+        ...asking.blocks.filter(kept => !added.has(kept.hash)),
+        ...blocks.map(({ kind, text, hash: key }) => ({ kind, text, hash: key })),
+      ].slice(-ASKING_MAX),
+    }))
+  }
+
   /** Reply blocks drawn before their thinking block came: the order the desktop may take */
   const drawnFirst = new Set<string>()
 
@@ -111,6 +128,7 @@ export function createReplies(host: Host) {
 
   /** The paragraphs' translations, in one request, into $.state and the cache */
   async function askFor(missing: readonly Block[], isAutomatic: boolean) {
+    await remember(missing)
     for (const block of missing) {
       await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))
     }
@@ -144,6 +162,7 @@ export function createReplies(host: Host) {
    * the paragraph before it in its block goes along, for consistent terms.
    */
   async function askEach(missing: readonly Block[], blocks: readonly Block[]) {
+    await remember(missing)
     const { replyContext } = await host.state.settings.get()
     for (const block of missing) {
       await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))
@@ -219,6 +238,7 @@ export function createReplies(host: Host) {
     }
     const chosen = settings.autoReply === 'last' ? stretch.slice(-settings.autoReplyCount) : stretch
     // At the turn's end every reply still to translate says 翻译中… at once, not only the one asked
+    await remember(chosen.flatMap(reply => reply.blocks).filter(translatable))
     for (const block of chosen.flatMap(reply => reply.blocks).filter(translatable)) {
       let isMarked = false
       await host.state.para.update(block.hash, para => {
@@ -266,6 +286,26 @@ export function createReplies(host: Host) {
       if (e.door === 'delivery' && message.type === 'user' && !message.isMeta && pending.length > 0) {
         void finish().catch(error => host.ui.debug(`reply finish: ${String(error)}`))
       }
+    },
+
+    /**
+     * The module loaded again (an update, a reload): each paragraph its
+     * predecessor left at 翻译中… is taken from the cache or asked again, on
+     * screen or not; the list keeps only those still waiting.
+     */
+    async resume() {
+      const { blocks } = await host.state.asking.get()
+      const waiting: typeof blocks = []
+      for (const kept of blocks) {
+        if ((await host.state.para.get(kept.hash)).status === 'pending') {
+          waiting.push(kept)
+          if (!isAsking(kept.hash)) {
+            stale.set(kept.hash, { kind: kept.kind as Block['kind'], text: kept.text, hash: kept.hash })
+          }
+        }
+      }
+      await host.state.asking.update(() => ({ blocks: waiting }))
+      await askStale()
     },
 
     /** A reply block drawn: a narration block among them is from now on a reply like any other */
@@ -342,6 +382,7 @@ export function createReplies(host: Host) {
         return
       }
       inFlight.add(block.hash)
+      await remember([block])
       await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))
       const shielded = protect(block.text)
       const result = await run(host, { kind: 'para', text: shielded.masked }).finally(() => inFlight.delete(block.hash))

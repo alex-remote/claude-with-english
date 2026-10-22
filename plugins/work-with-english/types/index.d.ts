@@ -305,6 +305,13 @@ export type WweStats = {
   share: WweShare | null
 }
 
+/**
+ * F6: the paragraphs asked for translation in this session, so a module
+ * loaded again (an update, a reload) asks again for one its predecessor left
+ * at 翻译中…; $.state outlives the module, its requests do not
+ */
+export type WweAsking = { blocks: { kind: string; text: string; hash: string }[] }
+
 /** One reply button of the summary card: what it reads, and what a click sends as the person's message */
 export type WweCardButton = { label: string; message: string }
 
@@ -346,6 +353,7 @@ declare module 'claude-code' {
       tasks: WweTasks
       card: StateFamily<WweCard>
       sent: StateFamily<WweCardSent>
+      asking: WweAsking
     }
   }
 }

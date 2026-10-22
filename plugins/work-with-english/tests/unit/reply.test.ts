@@ -7,7 +7,7 @@ import { segment } from '../../hooks/core/text/segment'
 import { createReplies } from '../../hooks/features/reply/controller'
 import { replyView } from '../../hooks/features/reply/view'
 import type { ReplyPart, ReplyUi } from '../../hooks/features/reply/view'
-import type { WwePara, WweSettingsView } from '../../types'
+import type { WweAsking, WwePara, WweSettingsView } from '../../types'
 import { fakeHost } from '../support/anki'
 
 // F6 › 一轮做完再翻 over the shared test Host, its model answering only when
@@ -25,6 +25,7 @@ const REPLIES = [
 function world(settings: WweSettingsView = DEFAULT_VIEW, store: Record<string, unknown> = {}) {
   const fake = fakeHost({ store })
   const paras = new Map<string, WwePara>()
+  let asking: WweAsking = { blocks: [] }
   const out: { system: string; prompt: string; answer: (text: string) => void }[] = []
   const host = fake.host as unknown as Record<string, any>
   host.state = {
@@ -37,14 +38,20 @@ function world(settings: WweSettingsView = DEFAULT_VIEW, store: Record<string, u
       },
     },
     settings: { get: async () => settings },
+    asking: {
+      get: async () => asking,
+      update: async (fn: (value: WweAsking) => WweAsking) => (asking = fn(asking)),
+    },
   }
   host.model.complete = (request: { system: string; prompt: string }) =>
     new Promise(resolve => {
       out.push({ ...request, answer: text => resolve({ isAnswered: true, text, usage: USAGE }) })
     })
   const replies = createReplies(fake.host)
+  /** The module loaded again, as an update or a reload does: its own memory gone, $.state kept */
+  const reload = () => createReplies(fake.host)
   const statusOf = (text: string) => segment(text).map(block => (paras.get(block.hash) ?? NO_PARA).status)
-  return { replies, paras, out, statusOf }
+  return { replies, paras, out, statusOf, reload, files: fake.files }
 }
 
 const flush = async () => {
@@ -106,6 +113,30 @@ const thought = (text: string) =>
     origin: { kind: 'model', model: 'claude-test' },
     uuid: `thinking-${text}`,
   }) as unknown as Args<'session.append'>
+
+describe('F6 › a reload while translating (an update, the desktop reloading a session not on screen)', () => {
+  test('the module loaded again asks again for what its predecessor left at 翻译中…, without being drawn', async () => {
+    const w = world()
+    w.replies.onAppend(appended(REPLIES[0]))
+    await flush()
+    expect(w.out.length).toBe(1)
+    expect(w.statusOf(REPLIES[0])).toEqual(['pending'])
+
+    // Its request died with it; $.state still says 翻译中…
+    const next = w.reload()
+    await next.resume()
+    await flush()
+    expect(w.out.length).toBe(2)
+    w.out[1]?.answer('我来看看配置是怎么加载的。')
+    await flush()
+    expect(w.statusOf(REPLIES[0])).toEqual(['done'])
+
+    // Loaded once more with nothing left waiting: nothing asked
+    await w.reload().resume()
+    await flush()
+    expect(w.out.length).toBe(2)
+  })
+})
 
 describe('F6 › narration (the desktop draws thinking text as a reply block)', () => {
   test('a thinking block is translated once drawn as a reply block, in either order; one never drawn costs nothing', async () => {

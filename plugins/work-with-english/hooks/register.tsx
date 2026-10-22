@@ -5,7 +5,7 @@ import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
 import { isTasksArg, tasksOpenedFromMessage } from './core/copy/tasks'
 import { DEFAULT_VIEW } from './core/settings/schema'
-import { EMPTY_BOOK, INITIAL_PANE, NOT_SENT, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
+import { EMPTY_BOOK, INITIAL_PANE, NOT_ASKING, NOT_SENT, NO_CARD, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
 import { hash } from './core/hash'
 import { isWweCommand, wweArgsOf } from './core/text/command'
 import { segment } from './core/text/segment'
@@ -76,6 +76,7 @@ const statsAtom = atom({ plugin: 'work-with-english', key: 'stats' } as const, n
 const tasksAtom = atom({ plugin: 'work-with-english', key: 'tasks' } as const, NO_TASKS)
 const cardAtom = atom({ plugin: 'work-with-english', key: 'card' } as const, NO_CARD)
 const sentAtom = atom({ plugin: 'work-with-english', key: 'sent' } as const, NOT_SENT)
+const askingAtom = atom({ plugin: 'work-with-english', key: 'asking' } as const, NOT_ASKING)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -228,6 +229,7 @@ export const register: Register = on => {
           get: id => read($, memberOf(sentAtom, { requestId: id })),
           update: (id, fn) => update($, memberOf(sentAtom, { requestId: id }), fn),
         },
+        asking: { get: () => read($, askingAtom), update: fn => update($, askingAtom, fn) },
       },
     }
     host = bound
@@ -289,6 +291,10 @@ export const register: Register = on => {
         // After the other toasts (F13 › 周报提醒)
         await weeklyReminder(bound, await todayOf(bound))
       })().catch(error => bound.ui.debug(`store backup: ${String(error)}`))
+    })
+    // Loaded again (an update, a reload) while its predecessor translated: what it left at 翻译中… goes again
+    bound.clock.after(0, () => {
+      void repliesOf.resume().catch(error => bound.ui.debug(`reply resume: ${String(error)}`))
     })
     bound.clock.every(CACHE_LOAD_MS, () => {
       void repliesOf.loadNoted().catch(error => bound.ui.debug(`reply cache load: ${String(error)}`))
