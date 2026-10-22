@@ -3,6 +3,7 @@ import type { SelectOption } from 'claude-code'
 import type { WwePane, WweSettings, WweSettingsView } from '../../../../types'
 import {
   AUTO_REPLY_LABELS,
+  AUTO_REPLY_WHEN_LABELS,
   CACHE_CLEAR,
   CACHE_CONFIRM,
   CACHE_MEASURING,
@@ -44,6 +45,14 @@ const AUTO_REPLY_ORDER: readonly WweSettings['autoReply'][] = ['off', 'last', 'a
 const autoReplyOptions = AUTO_REPLY_ORDER.map(value => ({
   value,
   label: AUTO_REPLY_LABELS[value] + (value === DEFAULT_SETTINGS.autoReply ? DEFAULT_SUFFIX : ''),
+}))
+
+/** 翻译时机's options, the default first and marked */
+const AUTO_REPLY_WHEN_ORDER: readonly WweSettings['autoReplyWhen'][] = ['written', 'turnEnd']
+
+const autoReplyWhenOptions = AUTO_REPLY_WHEN_ORDER.map(value => ({
+  value,
+  label: AUTO_REPLY_WHEN_LABELS[value] + (value === DEFAULT_SETTINGS.autoReplyWhen ? DEFAULT_SUFFIX : ''),
 }))
 
 /** 朗读服务's options, each online one with its 朗读模型; one not configured can't be chosen (F8) */
@@ -248,6 +257,15 @@ export function readingPage(ui: PaneUi, vm: PaneVm, actions: PaneActions) {
                     />
                   )}
                   {isLast && <Text>{REPLY_COUNT_UNIT}</Text>}
+                  {settings.autoReply === 'all' && (
+                    <Select
+                      key={vm.key('auto-reply-when')}
+                      label={ITEM_NAMES.autoReplyWhen}
+                      value={settings.autoReplyWhen}
+                      options={autoReplyWhenOptions}
+                      onSelect={value => actions.pick('autoReplyWhen', value)}
+                    />
+                  )}
                 </Box>
                 {errorLine(ui, vm.pane.errors.autoReplyCount)}
                 {note(ui, DESCRIPTIONS.autoReply)}

@@ -79,6 +79,17 @@ describe('the desktop app', () => {
     expect(withQuestionInReply(card.description)).toBe(card.description)
   })
 
+  test('the session’s start asks for the tools’ descriptions again, so the card’s note reaches the first turn', LOADS_THE_MOD, async ($, on) => {
+    const w = world(on)
+    const asked: string[] = []
+    on('ui.invalidate', ($, e) => {
+      asked.push(e.event)
+      return { value: undefined }
+    })
+    await start($, w, 'desktop')
+    expect(asked).toContain('tool.describe')
+  })
+
   test('a message that only starts with the letters goes on as any other', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     const opened = settingsPane(on)

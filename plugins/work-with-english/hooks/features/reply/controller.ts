@@ -13,8 +13,9 @@ import { addToDay } from '../stats/record'
 import { askLines, blockOfLine, planOf } from './planAsk'
 
 // F6 回复译文: collects the main conversation's reply blocks as they are
-// appended, and when the turn ends (or stops for a question or a plan)
-// translates them as the reading settings say, last first. A translation is
+// appended. With 全部 each is translated as soon as it is written (翻译时机
+// 每条写完后, the default); otherwise they wait for the turn's end (or a stop
+// for a question or a plan), which also asks again for any that failed. A translation is
 // kept per paragraph, by the hash of its text, in $.state for the drawing
 // and in a file of the data directory, so /resume shows it again without
 // asking (译文存在本机，不进 Claude 的上下文).
@@ -39,6 +40,15 @@ export function createReplies(host: Host) {
   const toLoad = new Set<string>()
   /** Paragraphs a turn's end showed 翻译中… under, waiting for their reply's request */
   const queued = new Set<string>()
+  /** Paragraphs whose request is on its way */
+  const inFlight = new Set<string>()
+  /**
+   * Paragraphs drawn as 翻译中… that no request of this module is on: the
+   * module before it was cut off mid-request (a reload, an update), and
+   * $.state kept its 翻译中…. Asked again from the timer, the cache first.
+   */
+  const stale = new Map<string, Block>()
+  const isAsking = (paraHash: string) => inFlight.has(paraHash) || queued.has(paraHash)
 
   const today = async () => {
     const ms = await host.clock.now()
@@ -62,9 +72,25 @@ export function createReplies(host: Host) {
       }
       missing.push(block)
     }
-    if (missing.length === 0) {
+    // Asked already, by the reply as written or by the turn's end: one request per paragraph
+    const asking = missing.filter(block => !inFlight.has(block.hash))
+    if (asking.length === 0) {
       return
     }
+    for (const block of asking) {
+      inFlight.add(block.hash)
+    }
+    try {
+      await askFor(asking, isAutomatic)
+    } finally {
+      for (const block of asking) {
+        inFlight.delete(block.hash)
+      }
+    }
+  }
+
+  /** The paragraphs' translations, in one request, into $.state and the cache */
+  async function askFor(missing: readonly Block[], isAutomatic: boolean) {
     for (const block of missing) {
       await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))
     }
@@ -89,6 +115,38 @@ export function createReplies(host: Host) {
     }
   }
 
+  /** 全部 with 每条写完后: a reply block translated as soon as it is written, without waiting for the turn's end */
+  async function translateWritten(reply: ReplyBlock) {
+    const settings = await host.state.settings.get()
+    if (settings.readingMode === 'paragraph' && settings.autoReply === 'all' && settings.autoReplyWhen === 'written') {
+      await translateBlock(reply, true)
+    }
+  }
+
+  /** The stale 翻译中… paragraphs: from the cache when kept there, else asked again */
+  async function askStale() {
+    if (stale.size === 0) {
+      return
+    }
+    const blocks = [...stale.values()]
+    stale.clear()
+    const dataDir = await dataDirOf(host)
+    for (const block of blocks) {
+      if (isAsking(block.hash) || (await host.state.para.get(block.hash)).status !== 'pending') {
+        continue
+      }
+      const kept = await readJson(host, cacheFileOf(dataDir, block.hash))
+      const zh = typeof kept === 'object' && kept !== null ? (kept as { zh?: unknown }).zh : undefined
+      if (typeof zh === 'string') {
+        await host.state.para.update(block.hash, para => ({ ...para, status: 'done', zh, error: null }))
+        continue
+      }
+      // Its turn now, as a paragraph the turn's end marked
+      queued.add(block.hash)
+      void translateBlock({ text: block.text, blocks: [block] }, true).catch(error => host.ui.debug(`reply stale: ${String(error)}`))
+    }
+  }
+
   /** The end of a stretch of the turn: count the English words, translate as the settings say. */
   async function finish() {
     const stretch = pending
@@ -110,7 +168,7 @@ export function createReplies(host: Host) {
       return
     }
     const chosen = settings.autoReply === 'last' ? stretch.slice(-settings.autoReplyCount) : stretch
-    // 一轮做完再翻: every reply to translate says 翻译中… at once, not only the one asked
+    // At the turn's end every reply still to translate says 翻译中… at once, not only the one asked
     for (const block of chosen.flatMap(reply => reply.blocks).filter(translatable)) {
       let isMarked = false
       await host.state.para.update(block.hash, para => {
@@ -137,7 +195,9 @@ export function createReplies(host: Host) {
       if (e.door === 'response' && message.type === 'assistant') {
         for (const block of message.content) {
           if (block.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') {
-            pending.push({ text: block.text, blocks: segment(block.text) })
+            const reply = { text: block.text, blocks: segment(block.text) }
+            pending.push(reply)
+            void translateWritten(reply).catch(error => host.ui.debug(`reply written: ${String(error)}`))
           }
         }
         return
@@ -171,6 +231,11 @@ export function createReplies(host: Host) {
       await translateBlock({ text: '', blocks }, true)
     },
 
+    /** F16 任务: a task list's steps, each a paragraph of its own; one translated before is not asked again */
+    async translateSteps(blocks: readonly Block[]) {
+      await translateBlock({ text: '', blocks: [...blocks] }, true)
+    },
+
     /** F6 › 计划和提问: the approved plan, from the result of the call that left plan mode */
     async translatePlan(output: unknown) {
       const plan = planOf(output)
@@ -193,9 +258,10 @@ export function createReplies(host: Host) {
       if (now.status === 'pending' && !queued.delete(block.hash)) {
         return
       }
+      inFlight.add(block.hash)
       await host.state.para.update(block.hash, para => ({ ...para, status: 'pending', error: null, shown: true }))
       const shielded = protect(block.text)
-      const result = await run(host, { kind: 'para', text: shielded.masked })
+      const result = await run(host, { kind: 'para', text: shielded.masked }).finally(() => inFlight.delete(block.hash))
       if (result.ok) {
         const zh = restore(result.value, shielded.tokens)
         await host.state.para.update(block.hash, () => ({ status: 'done', zh, error: null, shown: true }))
@@ -216,8 +282,16 @@ export function createReplies(host: Host) {
       }
     },
 
+    /** A paragraph drawn as 翻译中…: noted when no request of this module is on it */
+    noteStale(block: Block) {
+      if (!isAsking(block.hash)) {
+        stale.set(block.hash, block)
+      }
+    },
+
     /** Loads the noted paragraphs' kept translations; run from a timer, never while drawing. */
     async loadNoted() {
+      await askStale()
       if (toLoad.size === 0) {
         return
       }

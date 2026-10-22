@@ -2,6 +2,7 @@ import type { WweSettings } from '../../../types'
 import { savedToast } from '../copy/common'
 import {
   AUTO_REPLY_LABELS,
+  AUTO_REPLY_WHEN_LABELS,
   CARD_LANGUAGE_NAMES,
   CLAUDE_MODEL_LABELS,
   ITEM_NAMES,
@@ -46,6 +47,8 @@ export function formatValue<K extends SettingKey>(
         : AUTO_REPLY_LABELS[v as WweSettings['autoReply']]
     case 'autoReplyCount':
       return lastRepliesText(v as number)
+    case 'autoReplyWhen':
+      return AUTO_REPLY_WHEN_LABELS[v as WweSettings['autoReplyWhen']]
     case 'readingMode':
       return READING_MODE_LABELS[v as WweSettings['readingMode']]
     case 'translateService':

@@ -20,6 +20,8 @@ export type WweSettings = {
   autoReply: 'all' | 'last' | 'off'
   /** F6: N of "每轮最后 N 条" (1 to 99) */
   autoReplyCount: number
+  /** F6: with 全部, a reply translated once it is written, or all of them at the turn's end */
+  autoReplyWhen: 'written' | 'turnEnd'
   /** F6: auto-translate plans and questions */
   autoPlanAsk: boolean
   /** F8 */
@@ -299,6 +301,21 @@ export type WweStats = {
   share: WweShare | null
 }
 
+/** F16: one step of a task list Claude keeps in the desktop app, as it last set it */
+export type WweTaskStep = { text: string; status: 'pending' | 'in_progress' | 'completed' }
+
+/** F16: one task list: when Claude made it, in which turn, and its steps in Claude's order */
+export type WweTaskList = { at: number; turn: number; steps: WweTaskStep[] }
+
+/** F16: the 任务 pane's lists, the newest first */
+export type WweTasks = {
+  lists: WweTaskList[]
+  /** The main conversation's turns ended so far: a list made again in the same turn replaces that turn's */
+  turn: number
+  /** The pane opened by itself once this session; closed after that, it waits for /wwe 任务 */
+  isShown: boolean
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'work-with-english': {
@@ -313,6 +330,7 @@ declare module 'claude-code' {
       saved: StateFamily<WweSaved>
       book: WweBook
       stats: WweStats | null
+      tasks: WweTasks
     }
   }
 }

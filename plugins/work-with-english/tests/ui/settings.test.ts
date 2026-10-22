@@ -411,6 +411,17 @@ describe('设置 Pane', () => {
     expect(fake.toasts.at(-1)).toBe('已保存：自动翻译回复 每轮最后 3 条')
   })
 
+  test('翻译时机：只在“全部”时出现，默认“每条写完后”，可以改成“每轮做完后”', async () => {
+    const { fake, ui } = await opened()
+    await ui.press('tab-reading')
+    expect(ui.value('auto-reply-when')).toBe('written')
+    await ui.select('auto-reply-when', 'turnEnd')
+    expect(fake.store.get('settings/autoReplyWhen')).toBe('turnEnd')
+    expect(fake.toasts).toEqual(['已保存：翻译时机 每轮做完后'])
+    await ui.select('auto-reply', 'last')
+    expect(ui.find({ key: 'auto-reply-when' })).toBeUndefined()
+  })
+
   test('阅读方式：选划选模式后“自动翻译回复”不显示，“自动翻译计划和提问”仍在', async () => {
     const { fake, ui } = await opened()
     await ui.press('tab-reading')

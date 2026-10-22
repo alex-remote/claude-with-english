@@ -47,6 +47,7 @@ export const ITEM_NAMES: Record<SettingKey, string> = {
   readingMode: '阅读方式',
   autoReply: '自动翻译回复',
   autoReplyCount: '自动翻译回复',
+  autoReplyWhen: '翻译时机',
   autoPlanAsk: '自动翻译计划和提问',
   speechService: '朗读服务',
   voiceSystem: '声音',
@@ -106,12 +107,12 @@ export const DESCRIPTIONS = {
   strict: `防止 AI 对话上下文混入${SOURCE_NAME}，始终使用${TARGET_NAME}。关闭后可直接发送。`,
   replyLanguage:
     'Claude 按这个设置回复。这是 Claude Code 的全局设置，对所有会话立即生效，关闭本插件后仍会保留；语音输入和会话标题的语言也会随之改变。',
-  paragraphMode: '每轮做完后自动翻译回复，鼠标移到段落上出现“翻译”“朗读”“解析”。',
+  paragraphMode: '自动翻译回复，鼠标移到段落上出现“翻译”“朗读”“解析”。',
   selectMode: '回复不自动翻译，段落上同样有这三个按钮；另外选中任意一段英文，横条上也出现“翻译”“朗读”“解析”。',
   readingMode:
     '两种方式下都可以双击单词查词。在桌面端，选中文字后需按 ⌘C 复制，横条上才会显示查词和翻译。',
   autoReply:
-    'Claude 每轮做完后，自动翻译这一轮的回复，默认全部。只想看结论时，可以改成每轮最后几条；其他段落点“翻译”再翻。',
+    'Claude 的回复默认全部自动翻译，每条写完后就翻，也可以改成每轮做完后再翻。只想看结论时，可以改成每轮最后几条，在这一轮做完后翻；其他段落点“翻译”再翻。',
   autoPlanAsk: '自动翻译计划模式里的计划，以及 Claude 提问时的问题和选项。两种阅读方式下都起作用。',
   speechOnline: '在线语音更自然，读到一半可以停止。按字数收费，读过的内容会缓存，再读不重复收费。声音由 AI 生成。',
   cache:
@@ -179,6 +180,12 @@ export const AUTO_REPLY_LABELS: Record<WweSettings['autoReply'], string> = {
   off: '关闭',
   last: '每轮最后',
   all: '全部',
+}
+
+/** 翻译时机 under 自动翻译回复 = 全部 */
+export const AUTO_REPLY_WHEN_LABELS: Record<WweSettings['autoReplyWhen'], string> = {
+  written: '每条写完后',
+  turnEnd: '每轮做完后',
 }
 
 /** The unit after the count field of 每轮最后 */

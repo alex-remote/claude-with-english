@@ -34,6 +34,9 @@ export function parseLeadingCommand(text: string, commandNames: readonly string[
  */
 export const isWweCommand = (text: string): boolean => /^\/wwe(?:\s|$)/.test(text.trim())
 
+/** What follows our /wwe ('' for none), or null when the text is not /wwe */
+export const wweArgsOf = (text: string): string | null => (isWweCommand(text) ? text.trim().slice('/wwe'.length).trim() : null)
+
 /** A `!` shell command on the desktop, which arrives as a message; the terminal never submits one. */
 export const isShellInput = (text: string): boolean => text.trimStart().startsWith('<bash-input>')
 

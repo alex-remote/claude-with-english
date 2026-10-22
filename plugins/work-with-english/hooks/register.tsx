@@ -3,9 +3,10 @@ import type { Register } from 'claude-code'
 
 import type { WwePara } from '../types'
 import { settingsOpenedFromMessage } from './core/copy/settings'
+import { TASKS_ARG, tasksOpenedFromMessage } from './core/copy/tasks'
 import { DEFAULT_VIEW } from './core/settings/schema'
-import { EMPTY_BOOK, INITIAL_PANE, NO_PARA, UNKNOWN_SAVED } from './core/state/defaults'
-import { isWweCommand } from './core/text/command'
+import { EMPTY_BOOK, INITIAL_PANE, NO_PARA, NO_TASKS, UNKNOWN_SAVED } from './core/state/defaults'
+import { isWweCommand, wweArgsOf } from './core/text/command'
 import { segment } from './core/text/segment'
 import { localDate } from './core/time'
 import { createBand } from './features/band/controller'
@@ -39,6 +40,10 @@ import { createStatsPage } from './features/stats/controller'
 import type { StatsPage } from './features/stats/controller'
 import { statsSlot } from './features/stats/view'
 import { shareUiOf, shareView } from './features/share/view'
+import { TASKS_PANE, createTasks } from './features/tasks/controller'
+import type { Tasks } from './features/tasks/controller'
+import { PLAN_TOOL, stepBlock } from './features/tasks/plan'
+import { tasksView } from './features/tasks/view'
 import type { Host } from './host'
 import { refresh } from './services/settings'
 import { backupOrRestore } from './services/storeBackup'
@@ -63,6 +68,7 @@ const pickAtom = atom({ plugin: 'work-with-english', key: 'pick' } as const, nul
 const savedAtom = atom({ plugin: 'work-with-english', key: 'saved' } as const, UNKNOWN_SAVED)
 const bookAtom = atom({ plugin: 'work-with-english', key: 'book' } as const, EMPTY_BOOK)
 const statsAtom = atom({ plugin: 'work-with-english', key: 'stats' } as const, null)
+const tasksAtom = atom({ plugin: 'work-with-english', key: 'tasks' } as const, NO_TASKS)
 
 /** How often a session picks up settings another session changed (设置: 下次用到时就按新值来) */
 const SETTINGS_SYNC_MS = 5000
@@ -80,6 +86,7 @@ export const register: Register = on => {
   let picker: Picker | null = null
   let wordbook: Wordbook | null = null
   let statsPage: StatsPage | null = null
+  let tasks: Tasks | null = null
   /** F9: each reply's Markdown by the request id it is drawn under, to find a selection's sentence and code */
   const markdownByRequest = new Map<string, string>()
   let lastReadingMode: string | null = null
@@ -204,6 +211,7 @@ export const register: Register = on => {
         },
         book: { get: () => read($, bookAtom), update: fn => update($, bookAtom, fn) },
         stats: { get: () => read($, statsAtom), update: fn => update($, statsAtom, fn) },
+        tasks: { get: () => read($, tasksAtom), update: fn => update($, tasksAtom, fn) },
       },
     }
     host = bound
@@ -220,6 +228,7 @@ export const register: Register = on => {
     wordbook = wordbookOf
     const statsOf = createStatsPage(bound)
     statsPage = statsOf
+    tasks = createTasks(bound, { translate: blocks => repliesOf.translateSteps(blocks) })
     const settingsOf = createSettings(bound, {
       speaker: speakerOf,
       onTab: tab => {
@@ -272,6 +281,10 @@ export const register: Register = on => {
       void loadSettings(bound).catch(error => bound.ui.debug(`settings sync: ${String(error)}`))
     })
 
+    // The summary card's tool was described before this module loaded: ask again, so the
+    // tool.describe hook below reaches the first request (2.1.304 types, `$.ui.invalidate`)
+    $.ui.invalidate('tool.describe')
+
     // Last, in its own try: a failed register must not stop the session's start
     try {
       await bound.command.register({
@@ -309,9 +322,13 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // /wwe: nothing printed
-  on('command.run', { command: 'wwe' }, async () => {
-    await openSettings()
+  // /wwe: the settings; /wwe 任务: the task lists (F16); nothing printed
+  on('command.run', { command: 'wwe' }, async ($, e) => {
+    if (e.args.trim() === TASKS_ARG) {
+      await tasks?.open(true)
+    } else {
+      await openSettings()
+    }
     return {}
   }).catch(($, e, next) => next(e))
 
@@ -331,8 +348,14 @@ export const register: Register = on => {
   // F4: the person's Enter
   on('prompt.submit', async ($, e, next) => {
     // /wwe sent on as a message: the desktop app's prompt box may not know a mod's command yet (#99691)
-    if (e.origin.kind === 'composer' && isWweCommand(e.text)) {
-      await openSettings()
+    const wweArgs = e.origin.kind === 'composer' ? wweArgsOf(e.text) : null
+    if (wweArgs !== null) {
+      const isTasks = wweArgs === TASKS_ARG
+      if (isTasks) {
+        await tasks?.open(true)
+      } else {
+        await openSettings()
+      }
       const bound = host
       bound?.clock.after(0, () => {
         void (async () => {
@@ -342,7 +365,7 @@ export const register: Register = on => {
           }
         })().catch(error => bound.ui.debug(`wwe as a message: ${String(error)}`))
       })
-      return { drop: settingsOpenedFromMessage() }
+      return { drop: isTasks ? tasksOpenedFromMessage() : settingsOpenedFromMessage() }
     }
     if (!band) {
       return next(e)
@@ -433,7 +456,42 @@ export const register: Register = on => {
   // F6: a turn's end, or Claude stopping to ask or to show its plan
   on('turn.complete', ($, e, next) => {
     replies?.onTurnComplete(e)
+    // F16: a task list made after this is a new one
+    if (e.agentId === undefined) {
+      void tasks?.onTurnEnd().catch(error => host?.ui.debug(`tasks turn: ${String(error)}`))
+    }
     return next(e)
+  })
+
+  // F16 任务: the desktop app's task list, as Claude sets it; the call itself goes on unchanged
+  on('tool.call', { tool: PLAN_TOOL }, async ($, e, next) => {
+    if (e.agentId === undefined) {
+      void tasks?.onPlanCall(e as unknown as Record<string, unknown>).catch(error => host?.ui.debug(`tasks: ${String(error)}`))
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // F16 任务: the task lists, the newest first, each step with its translation
+  on('ui.render', { component: 'Pane', requestId: TASKS_PANE }, async ($, e) => {
+    const shown = await read($, tasksAtom)
+    const current = replies
+    const paras = new Map<string, WwePara>()
+    for (const list of shown.lists) {
+      for (const step of list.steps) {
+        const block = stepBlock(step.text)
+        if (paras.has(block.hash)) {
+          continue
+        }
+        const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
+        if (para.status === 'none' && translatable(block)) {
+          current?.note(block.hash)
+        } else if (para.status === 'pending') {
+          current?.noteStale(block)
+        }
+        paras.set(block.hash, para)
+      }
+    }
+    return tasksView($.ui.resolve(e), shown, text => paras.get(stepBlock(text).hash) ?? NO_PARA)
   })
   on('tool.call', { tool: ['AskUserQuestion', 'ExitPlanMode'] }, async ($, e, next) => {
     const current = e.agentId === undefined ? replies : null
@@ -456,7 +514,11 @@ export const register: Register = on => {
     }
     const paras = []
     for (const line of lines) {
-      paras.push(await read($, memberOf(paraAtom, { requestId: blockOfLine(line).hash })))
+      const para = await read($, memberOf(paraAtom, { requestId: blockOfLine(line).hash }))
+      if (para.status === 'pending') {
+        replies.noteStale(blockOfLine(line))
+      }
+      paras.push(para)
     }
     if (paras.every(para => para.status === 'none')) {
       return next(e)
@@ -479,6 +541,8 @@ export const register: Register = on => {
       // Translated before /resume: kept on disk, as a reply's paragraph is
       if (para.status === 'none' && translatable(block)) {
         current.note(block.hash)
+      } else if (para.status === 'pending') {
+        current.noteStale(block)
       }
       paras.push(para)
     }
@@ -504,6 +568,8 @@ export const register: Register = on => {
         const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
         if (para.status === 'none' && translatable(block)) {
           current.note(block.hash)
+        } else if (para.status === 'pending') {
+          current.noteStale(block)
         }
         paras.push(para)
       }
@@ -536,6 +602,8 @@ export const register: Register = on => {
       const para = await read($, memberOf(paraAtom, { requestId: block.hash }))
       if (para.status === 'none' && translatable(block)) {
         current.note(block.hash)
+      } else if (para.status === 'pending') {
+        current.noteStale(block)
       }
       const drawn = await next({
         ...e,

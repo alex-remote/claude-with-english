@@ -99,9 +99,81 @@ function underLines(w: ReturnType<typeof world>, text: string): string[] {
     .map(textOf)
 }
 
-describe('F6 › 一轮做完再翻', () => {
-  test('at the turn’s end every reply to translate says 翻译中… at once, while only the last is asked', async () => {
+describe('F6 › 翻译中… left behind', () => {
+  test('one a module cut off mid-request left is asked again; one this module is asking is left alone', async () => {
     const w = world()
+    const [first] = segment(REPLIES[0])
+    if (!first) {
+      throw new Error('no block')
+    }
+    // $.state outlives the module: a reload kept the 翻译中… of a request that died with it
+    w.paras.set(first.hash, { status: 'pending', zh: null, error: null, shown: true })
+    w.replies.noteStale(first)
+    await w.replies.loadNoted()
+    await flush()
+    expect(w.out.length).toBe(1)
+    expect(w.out[0]?.prompt).toContain('Let me check how the config is loaded.')
+    w.out[0]?.answer(JSON.stringify(['我来看看配置是怎么加载的。']))
+    await flush()
+    expect(w.statusOf(REPLIES[0])).toEqual(['done'])
+
+    // Written and asked for here: drawn as 翻译中… while its request is out, not asked twice
+    w.replies.onAppend(appended(REPLIES[1]))
+    await flush()
+    expect(w.out.length).toBe(2)
+    const [second] = segment(REPLIES[1])
+    if (!second) {
+      throw new Error('no block')
+    }
+    w.replies.noteStale(second)
+    await w.replies.loadNoted()
+    await flush()
+    expect(w.out.length).toBe(2)
+  })
+})
+
+describe('F6 › 翻译时机', () => {
+  // 全部 with 每轮做完后: every reply, at the turn's end, as before 0.1.3
+  const TURN_END = { ...DEFAULT_VIEW, autoReplyWhen: 'turnEnd' } as const
+
+  test('全部: each reply is asked for as soon as it is written; the turn’s end asks for none again', async () => {
+    const w = world()
+    w.replies.onAppend(appended(REPLIES[0]))
+    await flush()
+    expect(w.out.length).toBe(1)
+    expect(w.out[0]?.prompt).toContain('Let me check how the config is loaded.')
+    expect(w.statusOf(REPLIES[0])).toEqual(['pending'])
+    w.replies.onAppend(appended(REPLIES[1]))
+    await flush()
+    expect(w.out.length).toBe(2)
+    w.out[0]?.answer(JSON.stringify(['我来看看配置是怎么加载的。']))
+    await flush()
+    expect(w.statusOf(REPLIES[0])).toEqual(['done'])
+
+    w.replies.onAppend(appended(REPLIES[2]))
+    w.replies.onTurnComplete(turnEnd)
+    await flush()
+    expect(w.out.length).toBe(3)
+    w.out[1]?.answer(JSON.stringify(['加载器把文件读了两次。']))
+    w.out[2]?.answer(JSON.stringify(['我找到原因了。要我修吗？']))
+    await flush()
+    for (const text of REPLIES) {
+      expect(w.statusOf(text)).toEqual(['done'])
+    }
+    expect(w.out.length).toBe(3)
+  })
+
+  test('每轮做完后: nothing is asked while the turn goes on', async () => {
+    const w = world(TURN_END)
+    for (const text of REPLIES) {
+      w.replies.onAppend(appended(text))
+    }
+    await flush()
+    expect(w.out.length).toBe(0)
+  })
+
+  test('at the turn’s end every reply to translate says 翻译中… at once, while only the last is asked', async () => {
+    const w = world(TURN_END)
     for (const text of REPLIES) {
       w.replies.onAppend(appended(text))
     }
@@ -134,7 +206,7 @@ describe('F6 › 一轮做完再翻', () => {
   })
 
   test('翻译 on a reply still waiting its turn asks for it at once, and the turn does not ask for it again', async () => {
-    const w = world()
+    const w = world(TURN_END)
     for (const text of REPLIES) {
       w.replies.onAppend(appended(text))
     }

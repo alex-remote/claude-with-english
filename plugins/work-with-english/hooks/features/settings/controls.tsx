@@ -25,6 +25,7 @@ export type ControlKey =
   | 'translate-service'
   | 'auto-reply'
   | 'reply-count'
+  | 'auto-reply-when'
   | 'anki-deck'
   | 'claude-model'
   | 'model-id'

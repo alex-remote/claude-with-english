@@ -66,6 +66,7 @@ const FIELDS: Partial<Record<InputKey, ControlKey>> = {
 const SELECTS: Partial<Record<SelectKey, ControlKey>> = {
   translateService: 'translate-service',
   autoReply: 'auto-reply',
+  autoReplyWhen: 'auto-reply-when',
   claudeModel: 'claude-model',
   openaiModel: 'openai-model',
   elevenModel: 'eleven-model',

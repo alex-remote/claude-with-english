@@ -35,29 +35,33 @@ const message = (text: string) =>
 const LOADS_THE_MOD = { timeoutMs: 60_000 }
 
 describe('reply', () => {
-  test('at the turn end every reply is translated, the last first, each paragraph under itself', LOADS_THE_MOD, async ($, on) => {
+  test('全部: each reply is translated as soon as it is written, each paragraph under itself', LOADS_THE_MOD, async ($, on) => {
     const w = world(on)
     on('session.append', ($, e, next) => next(e))
     on('turn.complete', () => ({ text: '' }))
     on('ui.render', ($, e) => ({ type: 'Text', props: {}, children: [String((e.props as { text?: string }).text ?? '')] }))
-    // The last block is asked first
+    await start($, w)
+
+    // Written, then asked at once, while the turn goes on
+    w.replies.push(JSON.stringify(['我来看看配置是怎么加载的。']))
+    await append($, REPLY_1, 'u1')
+    await w.clock.settle()
+    expect(w.asked.length).toBe(1)
     w.replies.push(
       JSON.stringify([
         '我找到原因了。配置加载器在 ⟦1⟧ 加载之前就读取了 ⟦0⟧，所以拿到的是 ⟦2⟧。',
         '我建议把 ⟦0⟧ 调用移到 ⟦1⟧ 顶部。要我改吗？',
       ]),
-      JSON.stringify(['我来看看配置是怎么加载的。']),
     )
-    await start($, w)
-
-    await append($, REPLY_1, 'u1')
     await append($, REPLY_2, 'u2')
+    await w.clock.settle()
+    expect(w.asked.length).toBe(2)
+    // The turn's end asks for nothing twice
     await turnEnd($)
     await w.clock.settle()
-
     expect(w.asked.length).toBe(2)
     // Code went as placeholders and came back unchanged
-    expect(w.asked[0]?.prompt).toContain('⟦0⟧')
+    expect(w.asked[1]?.prompt).toContain('⟦0⟧')
     const terminal = await $.ui.mount({ ...message(REPLY_2), surface: 'terminal' })
     expect(
       await terminal.find({ type: 'Markdown', text: '我找到原因了。配置加载器在 `.env` 加载之前就读取了 `PORT`，所以拿到的是 `undefined`。' }),

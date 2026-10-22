@@ -12,6 +12,7 @@ import type {
   WweSettingsView,
   WweSpeaking,
   WweStats,
+  WweTasks,
 } from '../types'
 
 type E = EngineInterface
@@ -135,5 +136,7 @@ export type Host = {
     book: Cell<WweBook>
     /** F13, F14: the 统计 page and the share card */
     stats: Cell<WweStats | null>
+    /** F16: the 任务 pane's lists */
+    tasks: Cell<WweTasks>
   }
 }
