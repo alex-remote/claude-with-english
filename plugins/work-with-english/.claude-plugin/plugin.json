@@ -1,7 +1,7 @@
 {
   "name": "work-with-english",
   "displayName": "claude-with-english",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Practice a target language while working in Claude Code: see a live translation of what you type, use it or retype it, and have Claude reply in that language.",
   "author": {
     "name": "alex"
