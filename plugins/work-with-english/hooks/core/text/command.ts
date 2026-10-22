@@ -28,6 +28,12 @@ export function parseLeadingCommand(text: string, commandNames: readonly string[
   return { name, rest: text.slice(m[0].length).replace(/^\s+/, '') }
 }
 
+/**
+ * Our own /wwe, arrived as a message: the desktop app's prompt box sends a
+ * mod's command on as text before it has learnt the name (#99691).
+ */
+export const isWweCommand = (text: string): boolean => /^\/wwe(?:\s|$)/.test(text.trim())
+
 /** A `!` shell command on the desktop, which arrives as a message; the terminal never submits one. */
 export const isShellInput = (text: string): boolean => text.trimStart().startsWith('<bash-input>')
 

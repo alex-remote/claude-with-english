@@ -31,9 +31,12 @@ jobs:
         with:
           node-version: 22
 
-      # Claude Code 2.1.288 is the oldest the plugin supports: the Desktop app ships it
+      # Claude Code 2.1.288 is the oldest the plugin supports; 2.1.304 is what the Desktop app ships now
       - name: Type-check against the 2.1.288 types
         run: npx -y -p typescript@5.9 tsc -p tools/tsconfig.288.json
+
+      - name: Type-check against the 2.1.304 types
+        run: npx -y -p typescript@5.9 tsc -p tools/tsconfig.304.json
 
       - name: Install Claude Code
         run: |

@@ -57,7 +57,7 @@ export function planOf(output: unknown): string | null {
 
 /**
  * A line's translation. Around the question dialog only plain Text may go
- * (Claude Code refuses a Markdown there: its rows are not bounded).
+ * in the terminal (it refuses a Markdown there; the desktop takes one).
  */
 const under = (ui: ReplyUi, para: WwePara, isPlain: boolean) => {
   const { Text } = ui
@@ -73,15 +73,79 @@ const under = (ui: ReplyUi, para: WwePara, isPlain: boolean) => {
   return isPlain ? <Text dimColor>{para.zh}</Text> : translationOf(ui, para.zh)
 }
 
+/**
+ * The rows above the dialog: at most 12 in the terminal and 48 on the
+ * desktop, counted at 40 columns; a taller tree is refused and the dialog
+ * drawn alone (2.1.304 types, `RenderPropsOf['AskUserQuestion']`).
+ */
+export const askRows = (surface: string) => (surface === 'terminal' ? 12 : 48)
+const ASK_COLUMNS = 40
+
+/** Columns a text takes: two for a wide character (Han, kana, Hangul, full-width forms) */
+function columnsOf(text: string): number {
+  let columns = 0
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0
+    const isWide =
+      (code >= 0x1100 && code <= 0x115f) ||
+      (code >= 0x2e80 && code <= 0xa4cf) ||
+      (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xfe30 && code <= 0xfe4f) ||
+      (code >= 0xff00 && code <= 0xff60) ||
+      (code >= 0xffe0 && code <= 0xffe6) ||
+      code >= 0x20000
+    columns += isWide ? 2 : 1
+  }
+  return columns
+}
+
+/** The lines' rows at 40 columns, each after its indent and number */
+function rowsOf(line: AskLine, para: WwePara): number {
+  const text = para.status === 'pending' ? progressInline('翻译') : para.status === 'failed' ? (para.error ?? '') : (para.zh ?? '')
+  const indent = 2 + (line.isOption ? (line.number > 0 ? 2 : 5) : 0) + (line.number > 0 ? `${line.number}.`.length + 1 : 0)
+  return Math.max(1, Math.ceil(columnsOf(text) / Math.max(1, ASK_COLUMNS - indent)))
+}
+
+/**
+ * Which lines go above the dialog within its rows, the margin under them
+ * counted: all of them, else without the options' descriptions, else as
+ * many as fit from the top.
+ */
+export function askShown(lines: readonly AskLine[], paras: readonly WwePara[], rows: number): number[] {
+  const drawn = lines.flatMap((line, i) => {
+    const para = paras[i]
+    return para && para.status !== 'none' ? [{ i, isDescription: line.isOption && line.number === 0, rows: rowsOf(line, para) }] : []
+  })
+  const total = (shown: typeof drawn) => shown.reduce((sum, line) => sum + line.rows, 0) + 1
+  if (total(drawn) <= rows) {
+    return drawn.map(line => line.i)
+  }
+  const shown: number[] = []
+  let used = 1
+  for (const line of drawn.filter(line => !line.isDescription)) {
+    if (used + line.rows > rows) {
+      break
+    }
+    used += line.rows
+    shown.push(line.i)
+  }
+  return shown
+}
+
 /** The dialog's translation above it, its options numbered as the dialog numbers them. */
-export function askView(ui: ReplyUi, lines: readonly AskLine[], paras: readonly WwePara[], drawn: RenderElement) {
+export function askView(ui: ReplyUi, lines: readonly AskLine[], paras: readonly WwePara[], drawn: RenderElement, rows: number) {
   const { Box, Text } = ui
+  const shown = new Set(askShown(lines, paras, rows))
+  if (shown.size === 0) {
+    return drawn
+  }
   return (
     <Box flexDirection="column">
       <Box flexDirection="column" paddingLeft={2} marginBottom={1}>
         {lines.map((line, i) => {
           const para = paras[i]
-          if (!para || para.status === 'none') {
+          if (!para || !shown.has(i)) {
             return null
           }
           return (

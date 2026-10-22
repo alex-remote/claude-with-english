@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { segment } from '../../hooks/core/text/segment'
-import { askLines, planOf, planView } from '../../hooks/features/reply/planAsk'
+import { askLines, askRows, askShown, planOf, planView } from '../../hooks/features/reply/planAsk'
 import { MARKDOWN_MAX, markdownPieces, replyView } from '../../hooks/features/reply/view'
 import type { ReplyPart, ReplyUi } from '../../hooks/features/reply/view'
 import type { WwePara } from '../../types'
@@ -30,6 +30,32 @@ describe('plan and question lines (F6 › 计划和提问)', () => {
 
   test('anything that is not a question is left out', () => {
     expect(askLines([null, 'text', { options: 'none' }])).toEqual([])
+  })
+
+  // 2.1.304: at most 12 rows above the dialog in the terminal, 48 on the desktop, at 40 columns
+  const done = (zh: string): WwePara => ({ status: 'done', zh, error: null, shown: true })
+  const fourOptions = askLines([
+    {
+      question: 'Which way should the cache be cleared when the user signs out?',
+      options: [1, 2, 3, 4].map(n => ({ label: `Option ${n}`, description: `What option ${n} does, said in full` })),
+    },
+  ])
+  const longZh = '用户退出登录时，缓存应该怎样清除？这一句译文比较长，要占两行。'
+  const parasOf = (lines: typeof fourOptions) => lines.map(line => done(line.isOption ? (line.number > 0 ? '选项' : longZh) : longZh))
+
+  test('every line fits on the desktop', () => {
+    expect(askShown(fourOptions, parasOf(fourOptions), askRows('desktop'))).toHaveLength(fourOptions.length)
+  })
+
+  test('the terminal leaves out the options’ descriptions when all would not fit', () => {
+    const shown = askShown(fourOptions, parasOf(fourOptions), askRows('terminal'))
+    expect(shown.map(i => fourOptions[i]?.text)).toEqual([fourOptions[0]?.text, 'Option 1', 'Option 2', 'Option 3', 'Option 4'])
+  })
+
+  test('a question too long for the rows keeps what fits from the top, and none when nothing does', () => {
+    const many = Array.from({ length: 8 }, (_, n) => ({ text: `Question ${n}?`, isOption: false, number: 0 }))
+    expect(askShown(many, many.map(() => done(longZh)), askRows('terminal'))).toEqual([0, 1, 2, 3, 4])
+    expect(askShown(many, many.map(() => done(longZh)), 2)).toEqual([])
   })
 
   test('the plan comes with the result of the call that leaves plan mode', () => {

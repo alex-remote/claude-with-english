@@ -6,10 +6,10 @@ cd "$(dirname "$0")/.."
 PLUGIN=plugins/work-with-english
 TSC="npx -y -p typescript@5.9 tsc"
 
-echo "1/5 validate --strict"
+echo "1/6 validate --strict"
 claude plugin validate --strict "$PLUGIN"
 
-echo "2/5 every gating hook has a .catch"
+echo "2/6 every gating hook has a .catch"
 claude plugin validate --json "$PLUGIN" | python3 -c '
 import json, sys
 report = json.load(sys.stdin)
@@ -19,17 +19,20 @@ if bare:
     sys.exit("gating hooks without .catch: %s" % bare)
 '
 
-echo "3/5 tsc against the types this machine last laid"
+echo "3/6 tsc against the types this machine last laid"
 if [ -d "$PLUGIN/.claude-plugin/types" ]; then
   $TSC -p "$PLUGIN"
 else
   echo "    skipped: $PLUGIN/.claude-plugin/types is laid on the first --plugin-dir load"
 fi
 
-echo "4/5 tsc against the 2.1.288 snapshot"
+echo "4/6 tsc against the 2.1.288 snapshot, the oldest supported"
 $TSC -p tools/tsconfig.288.json
 
-echo "5/5 claude plugin test"
+echo "5/6 tsc against the 2.1.304 snapshot, the Desktop app's"
+$TSC -p tools/tsconfig.304.json
+
+echo "6/6 claude plugin test"
 claude plugin test "$PLUGIN"
 
 echo "All checks passed."

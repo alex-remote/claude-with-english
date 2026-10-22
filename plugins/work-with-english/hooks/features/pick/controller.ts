@@ -138,7 +138,14 @@ export function createPicker(
             newline = pending.indexOf('\n')
             try {
               const copied = JSON.parse(line) as { front?: unknown; text?: unknown }
-              if (copied.front === true && typeof copied.text === 'string' && copied.text.trim() !== '') {
+              // Every session the app keeps running watches the one clipboard: only the one on screen
+              // looks the copy up (the desktop app attaches only that one, 2.1.304, 实测 10-22)
+              if (
+                copied.front === true &&
+                typeof copied.text === 'string' &&
+                copied.text.trim() !== '' &&
+                (await host.session.surfaces()).includes('desktop')
+              ) {
                 await offer(copied.text, 'copy')
               }
             } catch {

@@ -230,6 +230,28 @@ describe('pick', () => {
     clipboard.end()
   })
 
+  test('the desktop: a session not on screen leaves a copy alone; shown again, it looks the next one up', LOADS_THE_MOD, async ($, on) => {
+    const w = world(onDesktop(on))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+    const clipboard = desktopClipboard(on)
+    await start($, w, 'desktop')
+
+    // Another session in front: the app detached this one
+    w.surfaces = []
+    clipboard.copy('cause')
+    await w.clock.settle()
+    expect(w.asked.filter(isLookup)).toEqual([])
+
+    w.surfaces = ['desktop']
+    w.replies.push(CAUSE)
+    clipboard.copy('cause')
+    await w.clock.settle()
+    expect(w.asked.filter(isLookup).length).toBe(1)
+    const band = await bandOn($, 'desktop')
+    expect(await band.find({ type: 'Text', text: 'n. 原因；起因' })).toBeDefined()
+    clipboard.end()
+  })
+
   test('划选模式: a code block past 600 characters gets no line, and the line before stays', LOADS_THE_MOD, async ($, on) => {
     const w = world(on, { store: { 'settings/readingMode': 'select' } })
     on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))

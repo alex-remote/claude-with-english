@@ -1,4 +1,4 @@
-import type { EngineInterface, Timer } from 'claude-code'
+import type { EngineInterface, SettingsSource, Timer } from 'claude-code'
 
 import type {
   WweAnalysis,
@@ -96,7 +96,8 @@ export type Host = {
     list: E['command']['list']
   }
   settings: {
-    read: E['settings']['read']
+    /** The settings merged, or one source's; 2.1.304 also reads one key, which nothing here asks */
+    read: (args?: { source?: SettingsSource }) => Promise<Readonly<Record<string, unknown>>>
   }
   config: {
     set: E['config']['set']

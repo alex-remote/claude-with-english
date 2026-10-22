@@ -1,13 +1,16 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
+import { settingsOpenedFromMessage } from './core/copy/settings'
 import { DEFAULT_VIEW } from './core/settings/schema'
 import { EMPTY_BOOK, INITIAL_PANE, NO_PARA, UNKNOWN_SAVED } from './core/state/defaults'
+import { isWweCommand } from './core/text/command'
 import { segment } from './core/text/segment'
 import { localDate } from './core/time'
 import { createBand } from './features/band/controller'
 import type { Band } from './features/band/controller'
 import { EMPTY_BAND } from './features/band/empty'
+import { WRAP_UP_TOOL, withQuestionInReply } from './features/env/nextStep'
 import { notFullscreen, startupToasts } from './features/env/toasts'
 import { takeUnseenReport, weeklyReminder } from './features/stats/report'
 import { bandView, isShown } from './features/band/view'
@@ -23,7 +26,7 @@ import { createPicker } from './features/pick/controller'
 import type { Picker } from './features/pick/controller'
 import { createReplies, translatable } from './features/reply/controller'
 import type { Replies } from './features/reply/controller'
-import { askLines, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
+import { askLines, askRows, askView, blockOfLine, planOf, planView } from './features/reply/planAsk'
 import { replyView } from './features/reply/view'
 import type { ReplyPart } from './features/reply/view'
 import { createSpeaker } from './features/speak/controller'
@@ -81,6 +84,32 @@ export const register: Register = on => {
   let lastReadingMode: string | null = null
   /** The terminal's layout was seen once (运行环境 › 启动时的提示) */
   let isLayoutSeen = false
+  /**
+   * Something draws the session: the desktop app attaches only the session on
+   * screen, so a toast in one nobody has open shows nowhere (2.1.304, 实测 10-22)
+   */
+  let markShown = () => {}
+  const shown = new Promise<void>(resolve => {
+    markShown = resolve
+  })
+
+  const todayOf = async (bound: Host) => {
+    const ms = await bound.clock.now()
+    return localDate(ms, -new Date(ms).getTimezoneOffset())
+  }
+
+  /** /wwe: the settings, on 统计's last week while a weekly report waits to be seen */
+  async function openSettings() {
+    const bound = host
+    if (bound && settings) {
+      analyses?.cancel()
+      const isReport = await takeUnseenReport(bound).catch(() => false)
+      if (isReport) {
+        await bound.state.pane.update(pane => ({ ...pane, statsRange: 'lastWeek' }))
+      }
+      await settings.open(isReport ? 'stats' : 'translate')
+    }
+  }
 
   /** The settings into $.state and the band's mirror, as $.store holds them now */
   async function loadSettings(bound: Host) {
@@ -221,15 +250,17 @@ export const register: Register = on => {
     // After the first prompt can go: the store's backup first, before anything writes to it
     bound.clock.after(0, () => {
       void (async () => {
-        const ms = await bound.clock.now()
-        const today = localDate(ms, -new Date(ms).getTimezoneOffset())
-        const outcome = await backupOrRestore(bound, today)
+        const outcome = await backupOrRestore(bound, await todayOf(bound))
         if (outcome === 'restored') {
           await loadSettings(bound)
         }
+        // A session Claude started beside this one, or one left in the sidebar, waits until it is opened
+        if ((await bound.session.surfaces()).length === 0) {
+          await shown
+        }
         await startupToasts(bound)
         // After the other toasts (F13 › 周报提醒)
-        await weeklyReminder(bound, today)
+        await weeklyReminder(bound, await todayOf(bound))
       })().catch(error => bound.ui.debug(`store backup: ${String(error)}`))
     })
     bound.clock.every(CACHE_LOAD_MS, () => {
@@ -265,17 +296,21 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // /wwe: the settings, on 统计's last week while a weekly report waits to be seen; nothing printed
+  // 桌面端: Claude asks in its reply, not on the summary card that hides the band
+  on('tool.describe', { tool: WRAP_UP_TOOL }, async ($, e, next) => {
+    const described = await next(e)
+    return { ...described, description: withQuestionInReply(described.description) }
+  }).catch(($, e, next) => next(e))
+
+  // A window, a phone or the terminal took the session
+  on('session.attach', ($, e, next) => {
+    markShown()
+    return next(e)
+  })
+
+  // /wwe: nothing printed
   on('command.run', { command: 'wwe' }, async () => {
-    const bound = host
-    if (bound && settings) {
-      analyses?.cancel()
-      const isReport = await takeUnseenReport(bound).catch(() => false)
-      if (isReport) {
-        await bound.state.pane.update(pane => ({ ...pane, statsRange: 'lastWeek' }))
-      }
-      await settings.open(isReport ? 'stats' : 'translate')
-    }
+    await openSettings()
     return {}
   }).catch(($, e, next) => next(e))
 
@@ -294,6 +329,20 @@ export const register: Register = on => {
 
   // F4: the person's Enter
   on('prompt.submit', async ($, e, next) => {
+    // /wwe sent on as a message: the desktop app's prompt box may not know a mod's command yet (#99691)
+    if (e.origin.kind === 'composer' && isWweCommand(e.text)) {
+      await openSettings()
+      const bound = host
+      bound?.clock.after(0, () => {
+        void (async () => {
+          // Where the prompt box kept the command, it goes with it
+          if (isWweCommand((await bound.prompt.read()).text)) {
+            await bound.prompt.fill({ text: '', mode: 'replace' })
+          }
+        })().catch(error => bound.ui.debug(`wwe as a message: ${String(error)}`))
+      })
+      return { drop: settingsOpenedFromMessage() }
+    }
     if (!band) {
       return next(e)
     }
@@ -412,7 +461,7 @@ export const register: Register = on => {
       return next(e)
     }
     // Claude Code's dialog goes in exactly once, under the translation
-    return askView($.ui.resolve(e), lines, paras, await next(e))
+    return askView($.ui.resolve(e), lines, paras, await next(e), askRows(e.surface))
   })
 
   // F6 › 计划和提问: the approved plan's translation under it

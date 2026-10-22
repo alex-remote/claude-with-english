@@ -1,4 +1,5 @@
 import { mock } from 'claude-code/testing'
+import type { RenderSurface } from 'claude-code'
 import type { Engine, TestBody } from 'claude-code/testing'
 
 /** The test's `on`, which the kit types but does not export by name */
@@ -22,6 +23,8 @@ export type World = {
   replyMs: number
   /** Claude is at work until the clock reaches this; a plugin's prompt waits for it (P12) */
   turnEndsAt: number | null
+  /** What draws the session: the desktop app attaches only the session on screen */
+  surfaces: RenderSurface[]
   clock: ReturnType<typeof mock.clock>
 }
 
@@ -37,6 +40,7 @@ export function world(on: On, seed: { store?: Record<string, unknown> } = {}): W
     submitted: [],
     replyMs: 0,
     turnEndsAt: null,
+    surfaces: [],
     clock: mock.clock(on, { now: Date.UTC(2026, 9, 12, 2, 0, 0) }),
   }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -67,6 +71,8 @@ export function world(on: On, seed: { store?: Record<string, unknown> } = {}): W
   })
   mock.env(on, { HOME: '/Users/test' })
   on('session.id', () => ({ value: 'session-1' }))
+  on('session.surfaces', () => ({ value: [...w.surfaces] }))
+  on('session.attach', ($, e) => ({ clientId: e.clientId }))
   on('ui.toast', ($, e) => {
     w.toasts.push(e.text)
     return { value: undefined }
@@ -103,8 +109,9 @@ export function world(on: On, seed: { store?: Record<string, unknown> } = {}): W
   return w
 }
 
-/** Starts the session as Claude Code does, then lets the start-up timers run. */
+/** Starts the session on screen as Claude Code does, then lets the start-up timers run. */
 export async function start($: Engine, w: World, surface: 'terminal' | 'desktop' = 'terminal') {
+  w.surfaces = [surface]
   await $.session.start({ surface, isInteractive: true, cwd: '/work' })
   await w.clock.settle()
 }

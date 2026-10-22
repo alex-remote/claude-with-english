@@ -13,6 +13,9 @@ const TARGET_NAME = uiNameOf(TARGET_LANG)
 
 export const PANE_TITLE = 'claude-with-english 设置'
 
+/** /wwe arrived as a message (the desktop app before it knows the command): the reason it was not sent */
+export const settingsOpenedFromMessage = () => '已打开 claude-with-english 设置，这条命令没有发给 Claude。'
+
 export type SettingsTab = 'translate' | 'reading' | 'wordbook' | 'services' | 'shortcuts' | 'stats'
 
 /** The tabs in the order the pane shows them */
